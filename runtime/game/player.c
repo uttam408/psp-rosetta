@@ -132,7 +132,9 @@ static void update_normal(Player *p)
     if (e->y < space_y() + 248)
         ent_set_vspeed(e, ent_vspeed(e) + SPEC_PLAYER_WATER_CEILING_PUSH);
 
-    /* 10. TODO water-proximity splash */
+    /* 10. water-proximity splash (Player.as:291-304) */
+    if (fp_distance(e->x, e->y, e->x, water_y()) < SPEC_PLAYER_WATER_SPLASH_DIST)
+        fx_anim("image/interaction/fx/watersplash/splash", e->x, water_y(), 0.3);
 
     /* 11. camera follow (Player.as:305-313) */
     {
@@ -147,15 +149,26 @@ static void update_normal(Player *p)
                     + (double)fp_rand((uint32_t)s) - s / 2.0;
     }
 
-    /* 12. repair while not firing (0 < health < 10). TODO: smoke FX */
+    /* 12. damage smoke + repair while not firing (Player.as:314-326) */
     if (p->health > 0 && p->health < SPEC_PLAYER_INIT_HEALTH) {
+        if ((double)fp_rand(10) > p->health)
+            fx_part("image/interaction/fx/smoke/smoke", e->x, e->y,
+                    fp_rand(360), fp_random() * ((10.0 - p->health) / 4.0), 40);
         if (!in_down(ACT_FIRE))
             p->health += SPEC_PLAYER_DAMAGE_REGEN_PER_FRAME;
     }
 
-    /* 13. death spiral — minimal: remove on water crash. TODO: FX + parts */
-    if (p->health <= 0 && e->y > water_y())
-        world_remove(e->world, e);
+    /* 13. death spiral (Player.as:327-361) */
+    if (p->health <= 0) {
+        fx_part("image/interaction/fx/smoke/smoke", e->x, e->y,
+                fp_rand(360), fp_random() * 2.5, 40);
+        if (fp_rand(30) < 1) fx_anim("image/interaction/explosion/explosion", e->x, e->y, 0.5);
+        if (fp_rand(10) < 1) fx_anim("image/interaction/smallexplosion/explosion", e->x, e->y, 0.5);
+        if (e->y > water_y()) {
+            fx_anim("image/interaction/largeexplosion/explosion", e->x, e->y, 0.5);
+            world_remove(e->world, e);
+        }
+    }
 
     /* 14. shake decay */
     p->shake *= SPEC_PLAYER_CAMERA_SHAKE_DECAY_MULT;

@@ -12,10 +12,11 @@ SDL_LIBS   := $(shell sdl2-config --libs)
 
 INC := -Isrc -I. $(SDL_CFLAGS)
 SRC := \
-  src/fp.c src/entity.c src/world.c src/pak.c src/ptx.c src/input.c src/audio_null.c \
+  src/fp.c src/entity.c src/world.c src/pak.c src/ptx.c src/input.c \
+  src/audio_mix.c src/drmp3_impl.c \
   game/game.c game/player.c game/uboot.c game/backdrop.c \
   game/fx.c game/enemy.c game/bullet.c game/brit.c \
-  platform/sdl/gfx_sdl.c platform/sdl/main_sdl.c
+  platform/sdl/gfx_sdl.c platform/sdl/audio_sdl.c platform/sdl/main_sdl.c
 
 OUT := build/luftrauser
 PAK := ../build/luftrauser/assets.pak

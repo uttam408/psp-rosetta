@@ -28,7 +28,11 @@ static void bullet_update(Entity *e)
         world_remove(e->world, e);
         return;
     }
-    if (e->y > SPEC_WORLD_WATER_Y) { world_remove(e->world, e); return; }
+    if (e->y > SPEC_WORLD_WATER_Y) {
+        fx_anim("image/interaction/fx/watersplash/splash", e->x, SPEC_WORLD_WATER_Y, 0.3);
+        world_remove(e->world, e);
+        return;
+    }
     if (--b->life <= 0) {
         fx_anim("image/interaction/fx/bullethit/bullethit", e->x, e->y, 0.5);
         world_remove(e->world, e);
@@ -76,7 +80,12 @@ static void ebullet_update(Entity *e)
         world_remove(e->world, e);
         return;
     }
-    if (e->y > SPEC_WORLD_WATER_Y || --b->life <= 0) world_remove(e->world, e);
+    if (e->y > SPEC_WORLD_WATER_Y) {
+        fx_anim("image/interaction/fx/watersplash/splash", e->x, SPEC_WORLD_WATER_Y, 0.3);
+        world_remove(e->world, e);
+        return;
+    }
+    if (--b->life <= 0) world_remove(e->world, e);
 }
 
 static void ebullet_render(Entity *e)

@@ -57,7 +57,9 @@ tiled = ["image/interaction/water/water", "image/interaction/space/space"]
 "image/worlds/game/mute"                       = [16, 16]    # 2
 
 [convert.audio]
-sample_rate = 22050        # SFX
-music_sample_rate = 32000
-music_bitrate = "80k"
+# 44100 everywhere: the PSP audio hardware is fixed at 44.1 kHz, so the runtime
+# mixer runs there and nothing needs resampling.
+sample_rate = 44100        # SFX -> PCM s16 mono
+music_sample_rate = 44100
+music_bitrate = "96k"
 music_min_seconds = 8.0    # clips longer than this are treated as music
