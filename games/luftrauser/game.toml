@@ -16,8 +16,11 @@ exclude = [
 ]
 
 [screen]
-native = [640, 480]   # approximate Flash stage
-target = [480, 272]   # PSP
+native = [480, 320]   # FlashPunk Engine(480, 320, 30, fixed) — see Main.as
+target = [480, 272]   # PSP. Native rebuild, NOT a crop/scale: the game is fully
+                      # world-space + camera-relative and keys off FP.width/height,
+                      # so setting the engine to 480x272 just makes the view 48px
+                      # shorter. No game-logic constants depend on 320.
 
 [convert.textures]
 max_size = 256

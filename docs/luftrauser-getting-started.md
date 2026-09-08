@@ -59,13 +59,41 @@ public class Main extends Engine {
 
 Implications:
 
-- **480×320 @ 30fps, fixed timestep.** Width already matches the PSP's 480; height
-  is 48px taller than the PSP's 272 — letterbox/crop 24px top+bottom, or scale.
-  Fixed timestep = deterministic = a replay oracle is possible later.
+- **480×320 @ 30fps, fixed timestep.** Fixed timestep = deterministic = a replay
+  oracle is possible later. Resolution: **rebuild native at 480×272, don't crop or
+  scale** — see below.
 - **Port the FlashPunk subset once, and the game classes port almost mechanically**
   against it. The runtime's engine abstraction should mirror FlashPunk's API.
 - FlashPunk's built-in debug `Console` and the Flex `mx.core.*` asset wrappers are
   in the SWF but aren't game content (already excluded in `games/luftrauser/game.toml`).
+
+## Resolution: native 480×272, not a crop
+
+The game is **not a fixed-screen game**. There's a camera that follows the player
+(`FP.camera.y = player.y - FP.halfHeight`) across a large world; the screen is a
+moving window into it. The world layout (space up top, sky, water below) is defined
+by **entity world-coordinates** — `Player` checks `y > water.y` / `y < space.y + 248`
+against the actual `Water` and `Space` entities, never against screen height.
+
+Grep of the game code (`Interaction/`, `Worlds/`, `Main`) for resolution literals:
+- `Main.as` `super(480,320,…)` — the only real one; change to `super(480,272,…)`
+- `Cloud.as` `Spritemap(clCloud,320,160,…)` — sprite-sheet **cell size**, unrelated
+- `Water.as` `TiledImage(clWater,800,240)` — tile buffer size, unrelated
+- `UBoot.as` `FP.camera.y = 600 - FP.halfHeight` — 600 is the boss's world Y
+- everything else keys off `FP.width` / `FP.height` / `FP.halfWidth` / `FP.halfHeight`
+
+So the runtime just constructs `FP` with `width=480, height=272` (`halfHeight=136`).
+**No game-logic constant depends on 320.** Effect in play: the view is 48px shorter,
+so ~24px less sky and ~24px less water visible at once, player still centered.
+Enemies spawn at `FP.camera.x ± FP.width` at world altitudes `100 + rand(500)` —
+unchanged. Optional polish: bias the camera a touch (`- FP.halfHeight - 12`) to
+reclaim a little upward visibility, since threats mostly dive from above.
+
+Rejected alternatives: rendering 480×320 → scaling to 272 is a **15%** vertical
+squish (ships look squat); pillarboxing to 408×272 shrinks all art 15% and wastes
+horizontal screen. 480×272 is arguably a *better* frame for a horizontal dogfighter.
+
+The asset pipeline is unaffected — resolution is purely an `FP`/runtime concern.
 
 ## Code size (real port surface)
 
