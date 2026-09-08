@@ -93,10 +93,16 @@ static void spawn_more_enemies(void)
     else if (gh < 15) { const int c[] = {0, 1, 2};             cls = c[fp_rand(3)]; }
     else              { const int c[] = {0, 0, 1, 1, 2, 2, 3}; cls = c[fp_rand(7)]; }
 
-    if (cls == 0) {
+    switch (cls) {
+    case 0:                                        /* Brit swarm */
         for (int i = 0; i <= (int)(gh / 5) + 1; i++) brit_spawn(sx, sy);
-    } else {
-        brit_spawn(sx, sy);   /* TODO: Bootje (1) / Jet (2) / Boot (3) */
+        break;
+    case 1: bootje_spawn(sx); break;               /* one boat */
+    case 2:                                        /* TODO Jet swarm -> Brit for now */
+        for (int i = 0; i <= (int)(gh / 15) + 1; i++)
+            brit_spawn(sx + fp_rand(100) - 50, sy + fp_rand(100) - 50);
+        break;
+    case 3: boot_spawn(sx); break;                 /* one battleship */
     }
 }
 

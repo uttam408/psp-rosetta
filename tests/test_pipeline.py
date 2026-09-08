@@ -166,9 +166,9 @@ class TestSwizzleRoundTrip(unittest.TestCase):
 class TestEndToEnd(unittest.TestCase):
     def test_build_produces_pak(self):
         ensure_fixture()
-        bd = REPO / "build" / "luftrauser"
+        bd = REPO / "build" / "_fixturegame"
         r = subprocess.run(
-            [PY, "-m", "pipeline.cli", "build", "--game", "luftrauser",
+            [PY, "-m", "pipeline.cli", "build", "--game", "_fixturegame",
              "--src", str(FIXTURE)],
             capture_output=True, text=True, cwd=REPO,
         )
@@ -183,8 +183,8 @@ class TestEndToEnd(unittest.TestCase):
 
     def test_index_entry_present(self):
         ensure_fixture()
-        bd = REPO / "build" / "luftrauser"
-        subprocess.run([PY, "-m", "pipeline.cli", "build", "--game", "luftrauser",
+        bd = REPO / "build" / "_fixturegame"
+        subprocess.run([PY, "-m", "pipeline.cli", "build", "--game", "_fixturegame",
                         "--src", str(FIXTURE)], capture_output=True, text=True, cwd=REPO)
         # the @index entry holds the AIDX binary asset table
         raw = (bd / "assets.pak").read_bytes()

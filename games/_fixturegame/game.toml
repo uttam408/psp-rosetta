@@ -1,0 +1,16 @@
+# Synthetic target for the pipeline test suite. Uses the same flash adapter as
+# Luftrauser against tests/make_fixture.py output, but its own build dir so the
+# tests never clobber build/luftrauser/.
+[game]
+name = "Fixture"
+adapter = "flash"
+
+[convert.textures]
+format = "rgba5551"
+swizzle = false
+pot = true
+
+[convert.audio]
+sample_rate = 44100
+music_sample_rate = 44100
+music_min_seconds = 8.0

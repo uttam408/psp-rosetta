@@ -36,8 +36,12 @@ Entity *backdrop_spawn_space(void);
 Entity *bullet_spawn(double x, double y, double angle);
 Entity *ebullet_spawn(double x, double y, double angle, double speed);
 Entity *brit_spawn(double x, double y);
+Entity *boot_spawn(double x);      /* battleship */
+Entity *bootje_spawn(double x);    /* boat */
 
 void player_getdamage(Entity *player, int amount);   /* Player.as:380 getDamage */
+void player_health_delta(Entity *player, double d);  /* raw, no shake */
+double player_health(Entity *player);
 void game_begin_combat(void);   /* UBoot.removeThis -> spawnEnemies + start loop */
 
 void game_start(void);   /* build the attract-mode world */

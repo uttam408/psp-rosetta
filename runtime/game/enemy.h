@@ -13,9 +13,10 @@ typedef struct Enemy {
     const char *die_snd;      /* sfx played on death                          */
     const char *part_tex;     /* debris texture id (BritPart, JetPart, ...)   */
     bool   dying;             /* health<=0, playing out death anim/sink       */
+    void (*on_death)(struct Enemy *);   /* NULL -> enemy_air_die              */
 } Enemy;
 
-/* apply `dmg`; if it drops health<=0, trigger the death path. */
+/* apply `dmg`; if it drops health<=0, trigger the death path (on_death or air). */
 void enemy_hit(Enemy *en, int dmg);
 
 /* air-unit death: SmallExplosion + parts + "+N" + score, then remove.

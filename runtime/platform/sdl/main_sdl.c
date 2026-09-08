@@ -111,6 +111,12 @@ static int run_shot2(int ticks, const char *out, const char *script, bool seq)
         buf[n] = 0;
         script = buf;
     }
+    if (SDL_strncmp(script, "!SEA", 4) == 0) {   /* debug: drop in sea units */
+        script += 4;
+        for (int i = 0; i < 100; i++) game_tick();     /* let the sub launch nothing */
+        boot_spawn(fp_camera.x + 260);
+        bootje_spawn(fp_camera.x + 120);
+    }
     size_t sl = SDL_strlen(script);
     int saved = 0;
     for (int i = 0; i < ticks; i++) {

@@ -41,5 +41,8 @@ void enemy_hit(Enemy *en, int dmg)
 {
     if (en->dying) return;
     en->health -= dmg;
-    if (en->health <= 0) enemy_air_die(en);      /* TODO: sea units sink instead */
+    if (en->health <= 0) {
+        if (en->on_death) en->on_death(en);
+        else enemy_air_die(en);
+    }
 }

@@ -36,6 +36,15 @@ static void do_shooting(Player *p)
     }
 }
 
+/* raw health change — no shake (Boot/Bootje body contact, underwater) */
+void player_health_delta(Entity *e, double d)
+{
+    Player *p = e->user;
+    p->health += d;
+}
+
+double player_health(Entity *e) { return ((Player *)e->user)->health; }
+
 /* Player.as:380 getDamage(amount) */
 void player_getdamage(Entity *e, int amount)
 {

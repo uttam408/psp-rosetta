@@ -15,7 +15,7 @@ SRC := \
   src/fp.c src/entity.c src/world.c src/pak.c src/ptx.c src/input.c \
   src/audio_mix.c src/drmp3_impl.c \
   game/game.c game/player.c game/uboot.c game/backdrop.c \
-  game/fx.c game/enemy.c game/bullet.c game/brit.c game/text.c \
+  game/fx.c game/enemy.c game/bullet.c game/brit.c game/sea.c game/text.c \
   platform/sdl/gfx_sdl.c platform/sdl/audio_sdl.c platform/sdl/main_sdl.c
 
 OUT := build/luftrauser
