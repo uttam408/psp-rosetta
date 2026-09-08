@@ -132,8 +132,10 @@ static void update_normal(Player *p)
     if (e->y < space_y() + 248)
         ent_set_vspeed(e, ent_vspeed(e) + SPEC_PLAYER_WATER_CEILING_PUSH);
 
-    /* 10. water-proximity splash (Player.as:291-304) */
-    if (fp_distance(e->x, e->y, e->x, water_y()) < SPEC_PLAYER_WATER_SPLASH_DIST)
+    /* 10. water-proximity splash (Player.as:291-304); throttled so the short
+       3-frame anim doesn't stack into a white wall at 30 fps */
+    if ((fp_frame % 3) == 0 &&
+        fp_distance(e->x, e->y, e->x, water_y()) < SPEC_PLAYER_WATER_SPLASH_DIST)
         fx_anim("image/interaction/fx/watersplash/splash", e->x, water_y(), 0.3);
 
     /* 11. camera follow (Player.as:305-313) */

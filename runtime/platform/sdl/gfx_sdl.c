@@ -66,6 +66,30 @@ GfxTex *gfx_tex_load(const PakAsset *a)
     return g;
 }
 
+GfxTex *gfx_tex_from_pixels(const uint16_t *px, int w, int h)
+{
+    uint8_t *rgba = malloc((size_t)w * h * 4);
+    if (!rgba) return NULL;
+    for (int i = 0; i < w * h; i++) {
+        uint16_t v = px[i];
+        rgba[i * 4]     = (uint8_t)((v & 0x1F) << 3);
+        rgba[i * 4 + 1] = (uint8_t)(((v >> 5) & 0x1F) << 3);
+        rgba[i * 4 + 2] = (uint8_t)(((v >> 10) & 0x1F) << 3);
+        rgba[i * 4 + 3] = (v & 0x8000) ? 255 : 0;
+    }
+    SDL_Texture *tx = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_ABGR8888,
+                                        SDL_TEXTUREACCESS_STATIC, w, h);
+    GfxTex *t = NULL;
+    if (tx) {
+        SDL_UpdateTexture(tx, NULL, rgba, w * 4);
+        SDL_SetTextureBlendMode(tx, SDL_BLENDMODE_BLEND);
+        t = malloc(sizeof *t);
+        t->tex = tx; t->w = w; t->h = h;
+    }
+    free(rgba);
+    return t;
+}
+
 void gfx_draw(GfxTex *t, double x, double y, double angle,
               double ox, double oy, double sx, double sy, uint32_t tint,
               int fx, int fy, int fw, int fh)

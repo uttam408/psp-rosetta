@@ -19,6 +19,9 @@ void gfx_frame_end(void);
 /* upload a pak image asset (decodes its .ptx); returns NULL on failure */
 GfxTex *gfx_tex_load(const PakAsset *a);
 
+/* upload raw RGBA5551 pixels (w,h power-of-two) — used for the built-in font */
+GfxTex *gfx_tex_from_pixels(const uint16_t *px5551, int w, int h);
+
 /* draw one sprite/frame. angle is degrees in FlashPunk convention (RAD = -PI/180).
  * origin is in frame pixels; scale <0 flips. tint_rgb 0xFFFFFF = untinted. */
 void gfx_draw(GfxTex *t, double x, double y, double angle,

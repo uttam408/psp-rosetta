@@ -117,6 +117,18 @@ GfxTex *gfx_tex_load(const PakAsset *a)
     return t;
 }
 
+GfxTex *gfx_tex_from_pixels(const uint16_t *px, int w, int h)
+{
+    size_t bytes = (size_t)w * h * 2;
+    void *buf = memalign(16, bytes);
+    if (!buf) return NULL;
+    memcpy(buf, px, bytes);
+    sceKernelDcacheWritebackRange(buf, bytes);
+    GfxTex *t = malloc(sizeof *t);
+    t->tw = w; t->th = h; t->pixels = buf;
+    return t;
+}
+
 void gfx_draw(GfxTex *t, double x, double y, double angle,
               double ox, double oy, double sx, double sy, uint32_t tint,
               int fx, int fy, int fw, int fh)

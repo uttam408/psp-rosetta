@@ -2,10 +2,28 @@
  * Milestone: build the world, run world_update, render. Not yet: enemy spawning,
  * difficulty, scoring, HUD, game-over timeline (TODO — port-spec §2,§5,§6,§7). */
 #include "game.h"
+#include "text.h"
 #include "../src/input.h"
 #include "../src/audio.h"
 #include <stdio.h>
 #include <string.h>
+
+#define HUD_RGB   0x8D420D   /* Game.as HUD colour */
+#define BLURB_RGB 0x610C1D
+
+/* --- high score (SharedObject "Luftrauser" / "Highscore" -> a 4-byte file) -- */
+static int hiscore_load(void)
+{
+    FILE *f = fopen("hiscore.dat", "rb");
+    int v = 0;
+    if (f) { if (fread(&v, sizeof v, 1, f) != 1) v = 0; fclose(f); }
+    return v < 0 ? 0 : v;
+}
+static void hiscore_save(int v)
+{
+    FILE *f = fopen("hiscore.dat", "wb");
+    if (f) { fwrite(&v, sizeof v, 1, f); fclose(f); }
+}
 
 Game g_game;
 
@@ -31,9 +49,14 @@ GfxTex *tex(const char *id)
 /* --- lifecycle ------------------------------------------------------------- */
 void game_start(void)
 {
+    static bool text_ready = false;
+    if (!text_ready) { text_init(); text_ready = true; }
+
+    int hi = hiscore_load();
     memset(&g_game, 0, sizeof g_game);
     world_init(&g_game.world);
     fp_seed(1);   /* TODO: match FlashPunk's seed init for replay parity */
+    g_game.high_score = hi;
 
     g_game.space = backdrop_spawn_space();
     g_game.water = backdrop_spawn_water();
@@ -83,11 +106,20 @@ void game_tick(void)
 
     Entity *pl = world_first_type(&g_game.world, ETYPE_PLAYER);
 
-    if (g_game.spawning && !g_game.game_over && (pl || !g_game.game_over)) {
-        if (pl && --g_game.t_spawn <= 0) spawn_more_enemies();
+    if (g_game.game_over) {
+        if (in_pressed(ACT_FIRE)) { snd_music_stop(); game_start(); }
+        return;
     }
-    if (g_game.spawning && !pl && !g_game.game_over) {
-        g_game.game_over = true;   /* TODO: game-over timeline (port-spec §2e) */
+
+    if (g_game.spawning && pl && --g_game.t_spawn <= 0) spawn_more_enemies();
+
+    if (g_game.spawning && !pl) {
+        /* player entity gone -> game over (port-spec §2e; full timeline is TODO) */
+        if (g_game.game_score > g_game.high_score) {
+            g_game.high_score = g_game.game_score;
+            hiscore_save(g_game.high_score);
+        }
+        g_game.game_over = true;
     }
 
     /* music ducks with altitude once flying (Game.as:301-304) */
@@ -95,10 +127,46 @@ void game_tick(void)
         snd_music_volume((float)fp_scale_clamp(pl->y, 100, 600, 0.5, 0.75));
 }
 
+static void hud(void)
+{
+    char buf[96];
+    Entity *pl = world_first_type(&g_game.world, ETYPE_PLAYER);
+    bool attract = world_count_type(&g_game.world, ETYPE_UBOOT) > 0 && !pl;
+
+    if (g_game.game_over) {
+        double cx = fp_half_width, cy = fp_half_height - 40;
+        text_draw("GAME OVER", cx, cy, HUD_RGB, TEXT_CENTER);
+        snprintf(buf, sizeof buf,
+                 "KILLS %d\nPLANES %d   JETS %d\nBOAT %d   SHIP %d",
+                 g_game.kills[0] + g_game.kills[1] + g_game.kills[2] + g_game.kills[3],
+                 g_game.kills[0], g_game.kills[1], g_game.kills[2], g_game.kills[3]);
+        text_draw(buf, cx, cy + 24, HUD_RGB, TEXT_CENTER);
+        snprintf(buf, sizeof buf, "SCORE %d    BEST %d",
+                 g_game.game_score, g_game.high_score);
+        text_draw(buf, cx, cy + 80, HUD_RGB, TEXT_CENTER);
+        text_draw("X TO RESTART", cx, cy + 100, BLURB_RGB, TEXT_CENTER);
+        return;
+    }
+
+    if (attract) {
+        double cx = fp_half_width;
+        text_draw("PRESS UP TO LAUNCH", cx, 70, HUD_RGB, TEXT_CENTER);
+        text_draw("ARROWS + X    RELEASE X TO REPAIR", cx, 86, BLURB_RGB, TEXT_CENTER);
+        snprintf(buf, sizeof buf, "BEST %d", g_game.high_score);
+        text_draw(buf, cx, 110, HUD_RGB, TEXT_CENTER);
+        return;
+    }
+
+    if (pl && g_game.game_score > 0) {
+        snprintf(buf, sizeof buf, "SCORE %d", g_game.game_score);
+        text_draw(buf, 8, 8, HUD_RGB, TEXT_LEFT);
+    }
+}
+
 void game_draw(void)
 {
     gfx_frame_begin(SPEC_ENGINE_CLEAR_RGB);
     world_render(&g_game.world);
-    /* TODO: HUD (SCORE), attract text, game-over overlay */
+    hud();
     gfx_frame_end();
 }
