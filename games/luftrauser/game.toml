@@ -28,11 +28,14 @@ format = "rgba5551"   # game art is mostly hard-edged 1-bit alpha; 16bpp halves 
 swizzle = true
 pot = true
 
-# Animation strips + tiled bands, with their FlashPunk frame cell size (from the
-# `new Spritemap(cls, w, h)` / `new TiledImage(cls, w, h)` calls in the AS3).
-# NOTE: the texture converter does not slice these yet — it POT-pads/clamps the
-# whole sheet, which is lossy for strips wider than 512 (cloud, largeexplosion,
-# skull). Data captured here now; slicer is a pipeline TODO (see docs/roadmap.md).
+# Water/Space are single tileable textures (32x240 source); FlashPunk wraps them
+# with TiledImage(800, 240) at runtime. Not sheets — the runtime tiles them.
+tiled = ["image/interaction/water/water", "image/interaction/space/space"]
+
+# Animation strips, with their FlashPunk `new Spritemap(cls, fw, fh)` cell size.
+# The texture converter slices these into frames and repacks each into one POT
+# atlas <= 512x512; the manifest gets a per-frame [x,y,w,h] table. Frames are
+# uniformly downscaled only if the atlas can't otherwise fit (cloud: frame_scale).
 [convert.textures.sheets]
 "image/interaction/explosion/explosion"        = [32, 32]    # 10 frames
 "image/interaction/smallexplosion/explosion"   = [16, 16]    # 7
@@ -48,11 +51,9 @@ pot = true
 "image/interaction/fx/jetpart/parts"           = [16, 16]    # 4
 "image/interaction/fx/playerpart/parts"        = [16, 16]    # 4
 "image/interaction/fx/jettrail/trail"          = [4, 4]      # 3
-"image/interaction/fx/cloud/cloud"             = [320, 160]  # 4  (1280px wide)
+"image/interaction/fx/cloud/cloud"             = [320, 160]  # 4  (1280px wide -> frames downscaled to 256)
 "image/worlds/game/skull"                      = [326, 80]   # 2  (652px wide)
 "image/worlds/game/mute"                       = [16, 16]    # 2
-"image/interaction/water/water"                = [800, 240]  # TiledImage band
-"image/interaction/space/space"                = [800, 240]  # TiledImage band
 
 [convert.audio]
 sample_rate = 22050        # SFX

@@ -11,13 +11,19 @@
     12  u8[pal_count*4]          palette, RGBA8888
     ..  pixel data
 
-Sprites are top-left anchored and transparent-padded up to the next power of two;
-the un-padded content size travels in the pack manifest as ``content_w/h`` so the
-runtime can set correct UVs.
+Single sprites are top-left anchored and transparent-padded to the next power of
+two; ``content_w/h`` in the pack manifest is the un-padded size.
+
+Animation sheets (ids listed in ``[convert.textures.sheets]`` with their FlashPunk
+``Spritemap`` frame cell size) are sliced into frames and repacked into one
+power-of-two atlas <= 512x512; the manifest record carries a ``frames`` list of
+``[x, y, w, h]`` rects so the runtime can pick frame UVs. Frames are uniformly
+downscaled only if the atlas would otherwise exceed 512 (``frame_scale`` < 1).
 """
 
 from __future__ import annotations
 
+import math
 import struct
 from pathlib import Path
 from typing import Any
@@ -27,6 +33,7 @@ from PIL import Image
 from ..ir import Asset
 
 _FMT = {"rgba8888": 0, "rgba5551": 1, "rgba4444": 2, "idx8": 3}
+_GU_MAX = 512
 
 
 def convert_image(asset: Asset, out_dir: Path, cfg: dict[str, Any]) -> dict[str, Any]:
@@ -34,17 +41,88 @@ def convert_image(asset: Asset, out_dir: Path, cfg: dict[str, Any]) -> dict[str,
     want_fmt = str(cfg.get("format", "rgba8888")).lower()
     do_swizzle = bool(cfg.get("swizzle", False))
     do_pot = bool(cfg.get("pot", True))
+    sheet = cfg.get("sheets", {}).get(asset.id)
 
     img = Image.open(asset.source).convert("RGBA")
     src_w, src_h = img.size
+
+    dst = out_dir / (_safe(asset.id) + ".ptx")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    if sheet:
+        atlas, extra = _pack_sheet(img, int(sheet[0]), int(sheet[1]))
+        data, enc = _encode_ptx(atlas, want_fmt, do_swizzle, do_pot=False)
+        dst.write_bytes(data)
+        return {
+            "id": asset.id, "kind": asset.kind.value,
+            "file": str(dst.relative_to(out_dir)),
+            "format": enc["fmt"], "width": enc["w"], "height": enc["h"],
+            "content_w": enc["w"], "content_h": enc["h"],
+            "src_w": src_w, "src_h": src_h, "swizzled": enc["swizzled"],
+            "sheet": True, "bytes": dst.stat().st_size, **extra,
+        }
 
     if max(img.size) > max_size:
         img.thumbnail((max_size, max_size), Image.LANCZOS)
     content_w, content_h = img.size
 
+    data, enc = _encode_ptx(img, want_fmt, do_swizzle, do_pot=do_pot)
+    dst.write_bytes(data)
+    return {
+        "id": asset.id, "kind": asset.kind.value, "file": str(dst.relative_to(out_dir)),
+        "format": enc["fmt"], "width": enc["w"], "height": enc["h"],
+        "content_w": content_w, "content_h": content_h,
+        "src_w": src_w, "src_h": src_h,
+        "swizzled": enc["swizzled"], "bytes": dst.stat().st_size,
+    }
+
+
+# ---------------------------------------------------------------- sheet packing
+
+def _pack_sheet(sheet: Image.Image, fw: int, fh: int) -> tuple[Image.Image, dict]:
+    sw, sh = sheet.size
+    scols, srows = max(1, sw // fw), max(1, sh // fh)
+    n = scols * srows
+
+    scale, dfw, dfh, cols, rows, aw, ah = _plan_atlas(fw, fh, n)
+    atlas = Image.new("RGBA", (aw, ah), (0, 0, 0, 0))
+    frames: list[list[int]] = []
+    for i in range(n):
+        sx, sy = (i % scols) * fw, (i // scols) * fh
+        frame = sheet.crop((sx, sy, sx + fw, sy + fh))
+        if scale != 1.0:
+            frame = frame.resize((dfw, dfh), Image.LANCZOS)
+        dx, dy = (i % cols) * dfw, (i // cols) * dfh
+        atlas.paste(frame, (dx, dy))
+        frames.append([dx, dy, dfw, dfh])
+    return atlas, {
+        "frame_w": dfw, "frame_h": dfh, "frame_count": n,
+        "frame_scale": round(scale, 4), "atlas_cols": cols, "atlas_rows": rows,
+        "frames": frames,
+    }
+
+
+def _plan_atlas(fw: int, fh: int, n: int, limit: int = _GU_MAX):
+    """Grid layout for n frames into a POT atlas <= limit, downscaling if needed."""
+    scale = 1.0
+    for _ in range(24):
+        dfw, dfh = max(1, round(fw * scale)), max(1, round(fh * scale))
+        cols = max(1, min(n, limit // dfw))
+        rows = math.ceil(n / cols)
+        aw, ah = _pot(cols * dfw), _pot(rows * dfh)
+        if aw <= limit and ah <= limit:
+            return scale, dfw, dfh, cols, rows, aw, ah
+        scale *= 0.8
+    raise SystemExit(f"cannot fit {n} frames of {fw}x{fh} into {limit}x{limit}")
+
+
+# ---------------------------------------------------------------- ptx encoding
+
+def _encode_ptx(img: Image.Image, want_fmt: str, do_swizzle: bool,
+                do_pot: bool) -> tuple[bytes, dict]:
     if do_pot:
-        pw, ph = _pot(content_w), _pot(content_h)
-        if (pw, ph) != (content_w, content_h):
+        pw, ph = _pot(img.width), _pot(img.height)
+        if (pw, ph) != img.size:
             canvas = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
             canvas.paste(img, (0, 0))
             img = canvas
@@ -53,44 +131,28 @@ def convert_image(asset: Asset, out_dir: Path, cfg: dict[str, Any]) -> dict[str,
     if want_fmt == "auto":
         want_fmt = "rgba8888" if _has_soft_alpha(img) else "rgba5551"
     if want_fmt not in _FMT:
-        raise SystemExit(f"{asset.id}: unknown texture format {want_fmt!r}")
+        raise SystemExit(f"unknown texture format {want_fmt!r}")
 
     palette: list[int] = []
     if want_fmt == "idx8":
         pixels, palette = _encode_idx8(img)
         bpp = 1
     elif want_fmt == "rgba8888":
-        pixels = img.tobytes()
-        bpp = 4
+        pixels, bpp = img.tobytes(), 4
     else:
-        pixels = _encode_16(img, want_fmt)
-        bpp = 2
+        pixels, bpp = _encode_16(img, want_fmt), 2
 
     flags = 0
     bytewidth = w * bpp
     if do_swizzle and bytewidth % 16 == 0 and h % 8 == 0:
         pixels = _swizzle(pixels, bytewidth, h)
         flags |= 1
-    elif do_swizzle:
-        # too small to swizzle cleanly; leave linear
-        pass
 
-    dst = out_dir / (_safe(asset.id) + ".ptx")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with dst.open("wb") as f:
-        f.write(b"PTX1")
-        f.write(struct.pack("<HHBBH", w, h, _FMT[want_fmt], flags, len(palette) // 4))
-        if palette:
-            f.write(bytes(palette))
-        f.write(pixels)
-
-    return {
-        "id": asset.id, "kind": asset.kind.value, "file": str(dst.relative_to(out_dir)),
-        "format": want_fmt, "width": w, "height": h,
-        "content_w": content_w, "content_h": content_h,
-        "src_w": src_w, "src_h": src_h,
-        "swizzled": bool(flags & 1), "bytes": dst.stat().st_size,
-    }
+    out = bytearray(b"PTX1")
+    out += struct.pack("<HHBBH", w, h, _FMT[want_fmt], flags, len(palette) // 4)
+    out += bytes(palette)
+    out += pixels
+    return bytes(out), {"w": w, "h": h, "fmt": want_fmt, "swizzled": bool(flags & 1)}
 
 
 def _pot(n: int) -> int:
@@ -101,8 +163,7 @@ def _pot(n: int) -> int:
 
 
 def _has_soft_alpha(img: Image.Image) -> bool:
-    a = img.getchannel("A")
-    lo, hi = a.getextrema()
+    lo, hi = img.getchannel("A").getextrema()
     return not (lo in (0, 255) and hi in (0, 255))
 
 

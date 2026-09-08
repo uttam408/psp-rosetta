@@ -119,18 +119,18 @@ one from the SWF. See `docs/flashpunk-api-surface.md` §7.
 
 SFX PCM total ≈ 380 KiB; music MP3 ≈ 1.27 MB.
 
-## Known limitation — wide animation sheets
+## Animation sheets → atlases
 
-The texture converter currently POT-pads/clamps the **whole** sprite sheet. Three
-sheets are wider than the PSP's 512 px texture limit and get downscaled (lossy):
+The 17 sheets listed in `games/luftrauser/game.toml` `[convert.textures.sheets]`
+(each with its `new Spritemap(cls, fw, fh)` cell size) are sliced into frames and
+repacked into one power-of-two atlas ≤ 512×512. Each manifest record carries
+`frame_w/frame_h/frame_count/atlas_cols/atlas_rows` and a `frames` list of
+`[x, y, w, h]` rects for runtime UVs.
 
-| asset | sheet | frames | should be |
-|---|---|---|---|
-| `image/interaction/fx/cloud/cloud` | 1280×160 | 4 × 320×160 | atlas ≤512, or 4 textures |
-| `image/interaction/largeexplosion/explosion` | 896×64 | 14 × 64×64 | 512×256 atlas (8×2 + pad) |
-| `image/worlds/game/skull` | 652×80 | 2 × 326×80 | 2 textures, or scale to 326→256 |
+`largeexplosion` (896px → 512×128, 8×2) and `skull` (652px → 512×256) pack at
+native size. **Only `cloud`** can't fit at native size (4 × 320×160 would need
+512×1024) so its frames are uniformly downscaled to 256×128 (`frame_scale 0.8`) —
+fine for a background parallax layer. Everything else is `frame_scale 1.0`.
 
-Frame sizes for every sheet are recorded in `games/luftrauser/game.toml`
-`[convert.textures.sheets]`. A **spritesheet-aware converter** (slice → repack into
-a POT atlas + emit a frame table) is the fix — tracked in `docs/roadmap.md`.
-Everything ≤512 px is already exact.
+`water`/`space` are **not** sheets — 32×240 single textures the runtime tiles via
+`TiledImage(800, 240)`; listed under `[convert.textures] tiled`.

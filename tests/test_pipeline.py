@@ -8,6 +8,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from PIL import Image
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
@@ -100,6 +102,48 @@ class TestTextureConvert(unittest.TestCase):
     def test_max_size_downscale(self):
         rec = self._one("logo", {"format": "rgba8888", "max_size": 64})
         self.assertLessEqual(max(rec["content_w"], rec["content_h"]), 64)
+
+
+class TestSheetSlicer(unittest.TestCase):
+    def test_plan_atlas_fits_512(self):
+        from pipeline.convert.textures import _plan_atlas
+        # 14 frames of 64x64 (largeexplosion) — fits without downscale
+        scale, dfw, dfh, cols, rows, aw, ah = _plan_atlas(64, 64, 14)
+        self.assertEqual(scale, 1.0)
+        self.assertLessEqual(aw, 512)
+        self.assertLessEqual(ah, 512)
+        self.assertGreaterEqual(cols * rows, 14)
+
+    def test_plan_atlas_downscales_when_needed(self):
+        from pipeline.convert.textures import _plan_atlas
+        # 4 frames of 320x160 (cloud) — can't fit 512 at native size
+        scale, dfw, dfh, cols, rows, aw, ah = _plan_atlas(320, 160, 4)
+        self.assertLess(scale, 1.0)
+        self.assertLessEqual(aw, 512)
+        self.assertLessEqual(ah, 512)
+
+    def test_pack_sheet_frame_rects(self):
+        from pipeline.convert.textures import _pack_sheet
+        strip = Image.new("RGBA", (64, 16), (0, 0, 0, 0))       # 4x 16x16
+        atlas, meta = _pack_sheet(strip, 16, 16)
+        self.assertEqual(meta["frame_count"], 4)
+        self.assertEqual(len(meta["frames"]), 4)
+        for x, y, w, h in meta["frames"]:
+            self.assertLessEqual(x + w, atlas.width)
+            self.assertLessEqual(y + h, atlas.height)
+        self.assertEqual(atlas.size, (64, 16))
+
+    def test_end_to_end_sheet_record(self):
+        ensure_fixture()
+        man = get_adapter("flash").crawl("luftrauser", FIXTURE)
+        asset = next(a for a in man.assets if a.id == "image/logo")
+        out = REPO / "build" / "_test" / "sheet"
+        rec = convert_asset(asset, out, {"textures": {
+            "format": "rgba5551", "sheets": {"image/logo": [40, 40]}}})
+        self.assertTrue(rec["sheet"])
+        self.assertEqual(rec["frame_count"], 3)                 # 120x40 / 40x40
+        data = (out / rec["file"]).read_bytes()
+        self.assertEqual(data[:4], b"PTX1")
 
 
 class TestSwizzleRoundTrip(unittest.TestCase):

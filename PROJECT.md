@@ -118,8 +118,10 @@ CLI: `psp-rosetta <crawl|convert|pack|info> ...` (see `README.md`).
       (~140 constants), [FlashPunk API surface](docs/flashpunk-api-surface.md),
       [assets readme](docs/assets_readme.md), [roadmap](docs/roadmap.md)
       (one-to-one -> pandoras-box, seams, `[features]`, fidelity harness)
-- [ ] Spritesheet-aware texture converter (3 sheets >512px still lossy)
-- [ ] Luftrauser runtime skeleton (pspdev CMake + EBOOT, pak/ptx loaders)
+- [x] Spritesheet-aware texture converter — slices sheets into POT atlases <=512
+      + per-frame rect table in the manifest (only `cloud` downscaled)
+- [ ] `spec/` — extract the ~140 constants into machine-readable data + C codegen
+- [ ] Luftrauser runtime skeleton (SDL desktop first, then pspdev CMake + EBOOT)
 - [ ] Java/NFM adapter (walks source tree — stubbed)
 - [ ] Mesh converter
 - [ ] `.vag` audio encoder
