@@ -125,8 +125,12 @@ CLI: `psp-rosetta <crawl|convert|pack|info> ...` (see `README.md`).
 - [x] Luftrauser runtime skeleton — SDL desktop: FP core (LCG rand, angle math,
       Entity motion model), pak/ptx loaders, attract mode, launch, **full player
       flight model**. Runs; verified by headless screenshot. See `runtime/README.md`.
-- [ ] Weapon/bullets, enemies, FX, HUD, game-over, audio (next)
-- [ ] PSP backend (pspgu + sceAudio + sceCtrl) + EBOOT
+- [x] Weapon (Bullet/EBullet), Brit enemy, spawn loop + `gameHard`, per-kill scoring
+- [x] PSP backend — `platform/psp/` (pspgu rotated-quad renderer using `.ptx` as
+      native `GU_PSM_5551`, sceCtrl input) + `Makefile.psp` -> **EBOOT.PBP builds
+      clean**. Not yet run (no emulator/hardware in the build env).
+- [ ] Jet / Boot / Bootje enemies, full FX, HUD text + game-over timeline, audio
+- [ ] Run the EBOOT (PPSSPP / hardware); tune GU perf, re-enable texture swizzle
 - [ ] Fidelity harness (replay diff vs original SWF)
 - [ ] Java/NFM adapter (walks source tree — stubbed)
 - [ ] Mesh converter

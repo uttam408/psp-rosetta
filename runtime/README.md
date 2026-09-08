@@ -11,6 +11,23 @@ brew install sdl2            # or sdl2-compat
 make run                     # builds + runs against ../build/luftrauser/assets.pak
 ```
 
+## Build for PSP (EBOOT.PBP)
+
+```sh
+export PSPDEV=~/pspdev PATH=~/pspdev/bin:$PATH
+make -f Makefile.psp         # -> runtime/EBOOT.PBP  (build-verified; not yet run)
+```
+
+Deploy: put `EBOOT.PBP` + a copy of `../build/luftrauser/assets.pak` together in
+`ms0:/PSP/GAME/LUFTRAUSER/` on a CFW PSP (ARK-4 / PRO), or open the EBOOT in
+PPSSPP with `assets.pak` beside it.
+
+The PSP backend (`platform/psp/`) uses the pipeline's `.ptx` blobs natively —
+RGBA5551, power-of-two, unswizzled — as `GU_PSM_5551` textures with no conversion.
+Sprites draw as rotated quads through the GUM matrix stack under an ortho
+projection. Input is sceCtrl (analog nub + D-pad + face buttons); audio is still
+the no-op backend.
+
 Controls: Arrows / WASD steer + thrust, X / Space fire, Enter start, Esc quit.
 
 Headless capture (used for tests / CI):

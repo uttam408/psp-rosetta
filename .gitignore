@@ -12,3 +12,8 @@ __pycache__/
 runtime/build/
 runtime/gen/
 *.o
+runtime/*.o
+runtime/**/*.o
+runtime/*.elf
+runtime/EBOOT.PBP
+runtime/PARAM.SFO
