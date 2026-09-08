@@ -59,7 +59,9 @@ bool gfx_init(const char *title, int lw, int lh, int scale)
     sceGuEnable(GU_TEXTURE_2D);
     sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
     sceGuTexFilter(GU_NEAREST, GU_NEAREST);
-    sceGuTexWrap(GU_REPEAT, GU_REPEAT);
+    sceGuTexWrap(GU_CLAMP, GU_CLAMP);
+    sceGuTexScale(1.0f, 1.0f);
+    sceGuTexOffset(0.0f, 0.0f);
     sceGuFinish();
     sceGuSync(0, 0);
     sceDisplayWaitVblankStart();
@@ -137,7 +139,9 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
     float l = -(float)ox, tp = -(float)oy, r = (float)(fw) - (float)ox, b = (float)(fh) - (float)oy;
     if (sx < 0) { float s = l; l = r; r = s; }
     if (sy < 0) { float s = tp; tp = b; b = s; }
-    float u0 = (float)fx, v0 = (float)fy, u1 = (float)(fx + fw), v1 = (float)(fy + fh);
+    /* GU_TEXTURE_32BITF texcoords are normalised [0,1] */
+    float u0 = (float)fx / t->tw, v0 = (float)fy / t->th;
+    float u1 = (float)(fx + fw) / t->tw, v1 = (float)(fy + fh) / t->th;
     unsigned int col = rgb_to_abgr(tint);
 
     Vtx *v = sceGuGetMemory(4 * sizeof(Vtx));
