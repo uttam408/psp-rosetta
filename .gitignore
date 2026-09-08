@@ -1,5 +1,8 @@
 .venv/
 build/
+# decompiled game source + assets — never commit (copyright, size)
+sources/
+*.swf
 __pycache__/
 *.pyc
 .pytest_cache/

@@ -111,7 +111,10 @@ CLI: `psp-rosetta <crawl|convert|pack|info> ...` (see `README.md`).
 - [x] Texture converter (`.ptx`: POT, swizzle, 4 formats)
 - [x] Audio converter (PCM / Ogg via ffmpeg)
 - [x] Pack archive + CLI + synthetic Luftrauser fixture + tests
-- [ ] Real Luftrauser SWF: obtain, JPEXS-export, run pipeline for real
+- [x] Real Luftrauser SWF: un-wrapped (MochiCrypt), decompiled, pipeline runs
+      (47 assets -> 1.8 MB pak). See [docs/luftrauser-getting-started.md](docs/luftrauser-getting-started.md).
+      Game is FlashPunk-based, 480x320@30 fixed; ~9.3k LOC AS3 to port.
+- [ ] Luftrauser AS3 -> port spec (physics/AI/spawn constants)
 - [ ] Java/NFM adapter (walks source tree — stubbed)
 - [ ] Mesh converter
 - [ ] `.vag` audio encoder

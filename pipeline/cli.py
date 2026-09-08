@@ -37,7 +37,8 @@ def cmd_crawl(args) -> int:
     if not adapter_name:
         raise SystemExit("no adapter given and none in game.toml")
     adapter = get_adapter(adapter_name)
-    man = adapter.crawl(args.game, Path(args.src))
+    man = adapter.crawl(args.game, Path(args.src),
+                        exclude=gcfg.get("crawl", {}).get("exclude", []))
     man_path, *_ = _paths(args.game, args)
     man.save(man_path)
     print(f"crawled {len(man.assets)} assets  {dict(sorted(man.counts().items()))}")

@@ -94,12 +94,22 @@ def _load_symbols(root: Path) -> dict[str, str]:
 
 
 def _pretty_name(path: Path, symbols: dict[str, str]) -> str:
-    """Prefer a symbol class name; fall back to a slugged file stem."""
+    """Prefer a symbol class name; then ffdec's ``<id>_<ClassName>`` convention;
+    then a slugged file stem."""
     stem = path.stem
-    # JPEXS names bitmaps like "DefineBitsLossless2 (7)" — pull the trailing id
+    lead = stem.split("_", 1)[0]
+    if lead.isdigit() and lead in symbols:
+        return slug(symbols[lead])
     digits = "".join(c for c in stem if c.isdigit())
     if digits and digits in symbols:
         return slug(symbols[digits])
-    if digits == stem and digits in symbols:
-        return slug(symbols[digits])
+
+    # ffdec: "<charId>_<Dotted.Class.Name>" and for sounds "<id>_<Class>_<Class>"
+    if lead.isdigit():
+        rest = stem.split("_", 1)[1] if "_" in stem else stem
+        parts = rest.split("_")
+        if len(parts) % 2 == 0 and parts[: len(parts) // 2] == parts[len(parts) // 2:]:
+            rest = "_".join(parts[: len(parts) // 2])   # collapse doubled sound name
+        rest = rest.replace(".", "/").replace("_cl", "/")
+        return slug(rest)
     return slug(stem)

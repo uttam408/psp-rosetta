@@ -6,6 +6,15 @@
 name = "Luftrauser"
 adapter = "flash"
 
+[crawl]
+# FlashPunk's built-in debug console + Flex asset wrappers ship inside the SWF but
+# aren't game content.
+exclude = [
+  "*net_flashpunk_debug*",
+  "*console*",
+  "*FONT_DEFAULT*",
+]
+
 [screen]
 native = [640, 480]   # approximate Flash stage
 target = [480, 272]   # PSP

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import fnmatch
 from pathlib import Path
 from collections.abc import Iterator
 
@@ -17,11 +18,19 @@ class Adapter(abc.ABC):
         """Yield one Asset per logical asset found under ``source_root``."""
         raise NotImplementedError
 
-    def crawl(self, game: str, source_root: Path) -> Manifest:
+    def crawl(self, game: str, source_root: Path,
+              exclude: list[str] | None = None) -> Manifest:
         source_root = source_root.resolve()
         if not source_root.exists():
             raise SystemExit(f"source not found: {source_root}")
-        assets = sorted(self.discover(source_root), key=lambda a: (a.kind.value, a.id))
+        exclude = exclude or []
+
+        def keep(a: Asset) -> bool:
+            hay = (a.id, a.source.name, str(a.source))
+            return not any(fnmatch.fnmatch(h, pat) for pat in exclude for h in hay)
+
+        assets = sorted((a for a in self.discover(source_root) if keep(a)),
+                        key=lambda a: (a.kind.value, a.id))
         # reject duplicate ids early — they would collide in the pak TOC
         seen: set[str] = set()
         for a in assets:
