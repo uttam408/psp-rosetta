@@ -1,0 +1,23 @@
+# Luftrauser (Vlambeer, 2011) — Flash / AS3, 2D.
+# Source: decompile the SWF with JPEXS ("Export all parts") and point `crawl --src`
+# at the export directory.
+
+[game]
+name = "Luftrauser"
+adapter = "flash"
+
+[screen]
+native = [640, 480]   # approximate Flash stage
+target = [480, 272]   # PSP
+
+[convert.textures]
+max_size = 256
+format = "rgba5551"   # game art is mostly hard-edged 1-bit alpha; 16bpp halves VRAM
+swizzle = true
+pot = true
+
+[convert.audio]
+sample_rate = 22050        # SFX
+music_sample_rate = 32000
+music_bitrate = "80k"
+music_min_seconds = 8.0    # clips longer than this are treated as music

@@ -1,0 +1,26 @@
+# Need for Madness? (Omar Waly / Radical Play, 2005) — Java applet, software 3D.
+# Source: a released / decompiled NFM source tree (e.g. catb0t/need-for-madness-source).
+# Point `crawl --src` at the tree root.
+
+[game]
+name = "Need for Madness?"
+adapter = "java"
+
+[screen]
+native = [800, 600]
+target = [480, 272]
+
+[convert.textures]
+max_size = 128        # NFM textures are small; keep VRAM budget sane
+format = "rgba8888"
+swizzle = true
+pot = true
+
+[convert.audio]
+sample_rate = 22050
+music_sample_rate = 32000
+music_bitrate = "80k"
+music_min_seconds = 12.0
+
+[convert.models]
+# placeholder — NFM text model format not parsed yet
