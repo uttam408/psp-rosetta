@@ -7,6 +7,23 @@ shapes, no bitmap fonts kept (the FlashPunk debug console font is excluded).
 Regenerate: `python -m pipeline.cli build --game luftrauser --src sources/luftrauser/assets`
 → `build/luftrauser/assets.pak` (~2.1 MB) + `assets.manifest.json`.
 
+## Previews
+
+Composited on the game's navy and scaled nearest-neighbour. Regenerate with
+`.venv/bin/python tools/render_asset_preview.py`.
+
+**Single-frame sprites** — planes/ships/bullets drawn as one (runtime-rotated) quad:
+
+![single-frame sprites](assets/sprites-overview.png)
+
+**Animation strips** — vertical bars mark the `Spritemap` frame cells:
+
+![animation strips](assets/anim-strips.png)
+
+The white ring → dark-red flash → collapsing crescent is the signature Vlambeer
+explosion (`explosion/explosion`, 10 frames). Player art is tan/skin-toned, enemy
+art is dark red `#61001D`, FX are white — the runtime recolours per palette.
+
 `src` = pixels in the SWF · `frame` = FlashPunk `Spritemap` cell (the animation
 frame size) · `n` = frame count · `.ptx` = what the pipeline emitted (POT, RGBA5551,
 swizzled).
