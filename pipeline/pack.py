@@ -20,10 +20,41 @@ from pathlib import Path
 from typing import Any
 
 
+_KIND = {"image": 0, "font": 0, "audio": 1, "data": 2, "mesh": 2}
+_PTXFMT = {"rgba8888": 0, "rgba5551": 1, "rgba4444": 2, "idx8": 3}
+
+
+def _build_index(records: list[dict[str, Any]]) -> bytes:
+    """Binary asset table so the runtime needs no JSON parser. See module docstring
+    of runtime/src/pak.c for the layout."""
+    have = [r for r in records if r.get("file")]
+    out = bytearray(b"AIDX")
+    out += struct.pack("<I", len(have))
+    for r in have:
+        idb = r["id"].encode("utf-8")
+        kind = _KIND.get(r["kind"], 2)
+        fmt = _PTXFMT.get(r.get("format", ""), 0)
+        is_img = kind == 0
+        sheet = bool(r.get("sheet"))
+        w, h = (int(r.get("width", 0)), int(r.get("height", 0))) if is_img else (0, 0)
+        if is_img and sheet:
+            rects = [tuple(map(int, fr)) for fr in r["frames"]]
+        elif is_img:
+            rects = [(0, 0, int(r.get("content_w", w)), int(r.get("content_h", h)))]
+        else:
+            rects = []
+        out += struct.pack("<H", len(idb)) + idb
+        out += struct.pack("<BBBB", kind, fmt, 1 if sheet else 0, 0)
+        out += struct.pack("<HHH", w, h, len(rects))
+        for x, y, fw, fh in rects:
+            out += struct.pack("<HHHH", x, y, fw, fh)
+    return bytes(out)
+
+
 def build_pak(assets_dir: Path, out_pak: Path, records: list[dict[str, Any]],
               meta: dict[str, Any]) -> dict[str, Any]:
     assets_dir = Path(assets_dir)
-    files: list[tuple[str, bytes]] = []
+    files: list[tuple[str, bytes]] = [("@index", _build_index(records))]
     for rec in records:
         rel = rec.get("file")
         if not rel:

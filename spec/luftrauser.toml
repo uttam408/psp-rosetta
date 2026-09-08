@@ -1,0 +1,95 @@
+# Luftrauser gameplay constants — the one-to-one reference values.
+# Every entry cites its origin in the decompiled AS3. Regenerate the C header with
+#   .venv/bin/python spec/gen_spec.py
+# Values are faithful to docs/luftrauser-port-spec.md; do not "improve" them here.
+
+[engine]
+logical_w        = 480      # Main.as:14  (game space; PSP viewport is 480x272)
+logical_h        = 320      # Main.as:14
+fps              = 30       # Main.as:14
+max_frame_skip   = 5        # Engine.as (accumulator catch-up)
+clear_rgb        = 15064492 # Game.as:96  FP.screen.color == 0xE5DDAC (pale cream sky)
+
+[world]
+water_y          = 640      # port-spec §8 / UBoot.as / Player.as:282
+space_y          = -240     # port-spec §8  (ceiling test uses space_y + 248)
+ceiling_y        = 8        # space_y + 248  (Player.as:155, 287)
+
+[player.init]
+health           = 10       # Player.as:56
+turn             = 10       # Player.as:58   deg/frame
+can_shoot        = 0        # Player.as:60
+shake            = 0        # Player.as:62
+spawn_vspeed     = -6       # Player.as:77   launches upward
+spawn_angle      = 90       # Player.as:78   facing up (deg, FP convention)
+hitbox_w         = 4        # Player.as:100  setHitbox(4,4,2,2)
+hitbox_h         = 4
+hitbox_ox        = 2
+hitbox_oy        = 2
+
+[player.physics]
+gravity          = 0.2      # Player.as:130 (set on first thrust / ceiling / spawn-exit)
+friction         = 0.1      # Player.as:131
+speed_on_thrust  = 6        # Player.as:133  (initial speed when leaving justSpawned)
+speed_min        = 2        # Player.as:266  clamp
+speed_max        = 6        # Player.as:267  clamp
+thrust_accel     = 1.5      # Player.as:~230 motionAdd(bodyAngle, 1.5) per frame held
+turn_normal      = 10       # Player.as:273
+turn_boosting    = 5        # Player.as:273
+spawn_turn_step  = 5        # Player.as:141-150  LEFT/RIGHT during justSpawned
+spawn_idle_vspeed = -2      # Player.as:138  when UP not held during justSpawned
+
+[player.weapon]
+bullet_speed     = 16       # Player.as / Bullet — motionAdd(angle, 16)
+cooldown_frames  = 3        # Player.as:262  can_shoot = 3  -> one shot / 4 frames
+bullet_life      = 60       # Bullet.as  Alarm(60, removeThis)
+bullet_hitbox    = 16       # Bullet.as  setHitbox(16,16,8,8)
+bullet_damage    = 2        # Bullet.as  enemy.health -= 2
+
+[player.water]
+underwater_health_drain = 0.2  # Player.as:283  /frame while y > water_y
+underwater_buoyancy     = -2   # Player.as:284  vspeed -= 2 /frame
+ceiling_push            = 2    # Player.as:288  vspeed += 2 /frame while y < ceiling_y
+splash_dist             = 60   # Player.as:291  spawn WaterSplash when within 60px of water
+
+[player.camera]
+follow_lerp      = 0.05     # Player.as:312  camera += (target-camera)*0.05  (+ overshoot)
+lead_mult        = 6        # Player.as:310  angleXY(lead, angle, speed*6)
+spawn_lead_hspeed = 10      # Player.as:153  camera.x = x - halfW + hspeed*10 (justSpawned)
+shake_decay_mult = 0.9      # Player.as:363
+shake_decay_sub  = 0.1      # Player.as:364
+
+[player.damage]
+regen_per_frame  = 0.05     # Player.as:~320  health += 0.05 while not firing (0<health<10)
+getdamage_shake  = 4        # Player.as:381  shake += amount*4
+dmg_ebullet      = 4        # EBullet -> getDamage(4)
+dmg_jet_ram      = 4        # Jet body collision
+dmg_brit_ram     = 3        # Brit body collision
+dmg_boat_contact = 2        # Boot/Bootje -> health -= 2 + knockback
+
+[uboot]
+spawn_x          = 300      # UBoot.as:34
+rise_vspeed      = -0.5     # UBoot.as:36
+ready_after      = 96       # UBoot.as:38  Alarm(96) -> vspeed 0, ready
+launch_dive_after = 48      # UBoot.as  Alarm(48) post-launch -> vspeed = 1
+launch_remove_after = 48    # UBoot.as  Alarm(48) -> spawnEnemies + remove
+camera_lock_y    = 600      # UBoot.as:60  camera.y = 600 - halfHeight while no player
+
+[spawn]
+first_brits          = 2    # Game.as:374
+first_alarm_min      = 30   # Game.as:376  Alarm(30 + rand(60))
+first_alarm_rand     = 60
+brit_spawn_y_base    = 100  # Game.as:374  y = 100 + rand(500)
+brit_spawn_y_rand    = 500
+spawn_x_offscreen    = 500  # FP.choose(camera.x-500, camera.x+width+500)
+
+[difficulty]
+gamehard_per_tick    = 0.1  # Game.as  gameHard += 0.1 per spawnMoreEnemies tick
+gamehard_per_kill    = 0.3  # Game.as / enemy removed()
+enemy_count_cap      = 100  # Game.as  typeCount < gameHard, cap 100
+
+[score]
+brit   = 10                 # Game.as
+jet    = 20
+bootje = 40
+boot   = 100

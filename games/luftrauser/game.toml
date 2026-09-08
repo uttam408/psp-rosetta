@@ -25,7 +25,8 @@ target = [480, 272]   # PSP. Native rebuild, NOT a crop/scale: the game is fully
 [convert.textures]
 max_size = 512        # PSP GU hard limit is 512x512
 format = "rgba5551"   # game art is mostly hard-edged 1-bit alpha; 16bpp halves VRAM
-swizzle = true
+swizzle = false       # TODO re-enable once the PSP GU backend consumes swizzled
+                      # data directly; the SDL desktop backend wants linear.
 pot = true
 
 # Water/Space are single tileable textures (32x240 source); FlashPunk wraps them

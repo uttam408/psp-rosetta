@@ -119,9 +119,15 @@ CLI: `psp-rosetta <crawl|convert|pack|info> ...` (see `README.md`).
       [assets readme](docs/assets_readme.md), [roadmap](docs/roadmap.md)
       (one-to-one -> pandoras-box, seams, `[features]`, fidelity harness)
 - [x] Spritesheet-aware texture converter — slices sheets into POT atlases <=512
-      + per-frame rect table in the manifest (only `cloud` downscaled)
-- [ ] `spec/` — extract the ~140 constants into machine-readable data + C codegen
-- [ ] Luftrauser runtime skeleton (SDL desktop first, then pspdev CMake + EBOOT)
+      + per-frame rect table; pak gains an `@index` (AIDX) binary asset table
+- [x] `spec/luftrauser.toml` + `spec/gen_spec.py` -> `runtime/gen/spec_luftrauser.h`
+      (67 constants, each citing the AS3 line)
+- [x] Luftrauser runtime skeleton — SDL desktop: FP core (LCG rand, angle math,
+      Entity motion model), pak/ptx loaders, attract mode, launch, **full player
+      flight model**. Runs; verified by headless screenshot. See `runtime/README.md`.
+- [ ] Weapon/bullets, enemies, FX, HUD, game-over, audio (next)
+- [ ] PSP backend (pspgu + sceAudio + sceCtrl) + EBOOT
+- [ ] Fidelity harness (replay diff vs original SWF)
 - [ ] Java/NFM adapter (walks source tree — stubbed)
 - [ ] Mesh converter
 - [ ] `.vag` audio encoder

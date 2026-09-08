@@ -178,8 +178,17 @@ class TestEndToEnd(unittest.TestCase):
         data = pak.read_bytes()
         self.assertEqual(data[:4], b"PAK1")
         count = struct.unpack("<I", data[4:8])[0]
-        self.assertEqual(count, 8)                  # 4 img + 3 audio + 1 data
+        self.assertEqual(count, 9)                  # @index + 4 img + 3 audio + 1 data
         self.assertTrue((bd / "assets.manifest.json").exists())
+
+    def test_index_entry_present(self):
+        ensure_fixture()
+        bd = REPO / "build" / "luftrauser"
+        subprocess.run([PY, "-m", "pipeline.cli", "build", "--game", "luftrauser",
+                        "--src", str(FIXTURE)], capture_output=True, text=True, cwd=REPO)
+        # the @index entry holds the AIDX binary asset table
+        raw = (bd / "assets.pak").read_bytes()
+        self.assertIn(b"AIDX", raw)
 
 
 if __name__ == "__main__":
