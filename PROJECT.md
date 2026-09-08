@@ -114,7 +114,12 @@ CLI: `psp-rosetta <crawl|convert|pack|info> ...` (see `README.md`).
 - [x] Real Luftrauser SWF: un-wrapped (MochiCrypt), decompiled, pipeline runs
       (47 assets -> 1.8 MB pak). See [docs/luftrauser-getting-started.md](docs/luftrauser-getting-started.md).
       Game is FlashPunk-based, 480x320@30 fixed; ~9.3k LOC AS3 to port.
-- [ ] Luftrauser AS3 -> port spec (physics/AI/spawn constants)
+- [x] Luftrauser AS3 -> analysis docs: [port spec](docs/luftrauser-port-spec.md)
+      (~140 constants), [FlashPunk API surface](docs/flashpunk-api-surface.md),
+      [assets readme](docs/assets_readme.md), [roadmap](docs/roadmap.md)
+      (one-to-one -> pandoras-box, seams, `[features]`, fidelity harness)
+- [ ] Spritesheet-aware texture converter (3 sheets >512px still lossy)
+- [ ] Luftrauser runtime skeleton (pspdev CMake + EBOOT, pak/ptx loaders)
 - [ ] Java/NFM adapter (walks source tree — stubbed)
 - [ ] Mesh converter
 - [ ] `.vag` audio encoder

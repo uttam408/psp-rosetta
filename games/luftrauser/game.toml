@@ -23,10 +23,36 @@ target = [480, 272]   # PSP. Native rebuild, NOT a crop/scale: the game is fully
                       # shorter. No game-logic constants depend on 320.
 
 [convert.textures]
-max_size = 256
+max_size = 512        # PSP GU hard limit is 512x512
 format = "rgba5551"   # game art is mostly hard-edged 1-bit alpha; 16bpp halves VRAM
 swizzle = true
 pot = true
+
+# Animation strips + tiled bands, with their FlashPunk frame cell size (from the
+# `new Spritemap(cls, w, h)` / `new TiledImage(cls, w, h)` calls in the AS3).
+# NOTE: the texture converter does not slice these yet — it POT-pads/clamps the
+# whole sheet, which is lossy for strips wider than 512 (cloud, largeexplosion,
+# skull). Data captured here now; slicer is a pipeline TODO (see docs/roadmap.md).
+[convert.textures.sheets]
+"image/interaction/explosion/explosion"        = [32, 32]    # 10 frames
+"image/interaction/smallexplosion/explosion"   = [16, 16]    # 7
+"image/interaction/largeexplosion/explosion"   = [64, 64]    # 14  (896px wide)
+"image/interaction/ebullet/bullet"             = [12, 12]    # 2
+"image/interaction/player/boost"               = [16, 16]    # 2
+"image/interaction/player/booststart"          = [16, 16]    # 5
+"image/interaction/fx/bigwatersplash/splash"   = [34, 63]    # 3
+"image/interaction/fx/bullethit/bullethit"     = [16, 16]    # 4
+"image/interaction/fx/watersplash/splash"      = [16, 16]    # 3
+"image/interaction/fx/smoke/smoke"             = [16, 16]    # 5
+"image/interaction/fx/britpart/parts"          = [16, 16]    # 4
+"image/interaction/fx/jetpart/parts"           = [16, 16]    # 4
+"image/interaction/fx/playerpart/parts"        = [16, 16]    # 4
+"image/interaction/fx/jettrail/trail"          = [4, 4]      # 3
+"image/interaction/fx/cloud/cloud"             = [320, 160]  # 4  (1280px wide)
+"image/worlds/game/skull"                      = [326, 80]   # 2  (652px wide)
+"image/worlds/game/mute"                       = [16, 16]    # 2
+"image/interaction/water/water"                = [800, 240]  # TiledImage band
+"image/interaction/space/space"                = [800, 240]  # TiledImage band
 
 [convert.audio]
 sample_rate = 22050        # SFX
