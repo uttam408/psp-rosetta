@@ -17,3 +17,4 @@ runtime/**/*.o
 runtime/*.elf
 runtime/EBOOT.PBP
 runtime/PARAM.SFO
+runtime/assets.pak
