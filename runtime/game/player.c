@@ -3,6 +3,7 @@
  * 11,12,14,15,16). Not yet: weapon/bullets, smoke/particle FX, death spiral,
  * water-splash visuals. Marked TODO inline. */
 #include "game.h"
+#include "fx.h"
 #include "../src/input.h"
 #include "../src/audio.h"
 #include <stdlib.h>
@@ -23,6 +24,30 @@ typedef struct {
 static double space_y(void) { return SPEC_WORLD_SPACE_Y; }
 static double water_y(void) { return SPEC_WORLD_WATER_Y; }
 
+/* Player.as step 4 — one shot per (cooldown+1) frames while FIRE held. */
+static void do_shooting(Player *p)
+{
+    if (p->can_shoot <= 0 && in_down(ACT_FIRE)) {
+        snd_play("audio/interaction/player/sndshoot", 1.0f, 0.0f);
+        bullet_spawn(p->e.x, p->e.y, p->body_angle);
+        p->can_shoot = SPEC_PLAYER_WEAPON_COOLDOWN_FRAMES;
+    } else if (p->can_shoot > 0) {
+        p->can_shoot--;
+    }
+}
+
+/* Player.as:380 getDamage(amount) */
+void player_getdamage(Entity *e, int amount)
+{
+    Player *p = e->user;
+    p->health -= amount;
+    p->shake += amount * SPEC_PLAYER_DAMAGE_GETDAMAGE_SHAKE;
+    if (p->health < 0)
+        for (int i = 0; i < 5; i++)
+            fx_part("image/interaction/fx/playerpart/parts", e->x, e->y,
+                    fp_rand(360), 2 + fp_rand(5), (int)fp_rand(300) + 1);
+}
+
 /* --- Player.as:126-183  "just spawned" --------------------------------------*/
 static void update_spawn(Player *p)
 {
@@ -41,6 +66,8 @@ static void update_spawn(Player *p)
 
     if (in_down(ACT_LEFT))  p->body_angle += SPEC_PLAYER_PHYSICS_SPAWN_TURN_STEP;
     if (in_down(ACT_RIGHT)) p->body_angle -= SPEC_PLAYER_PHYSICS_SPAWN_TURN_STEP;
+
+    do_shooting(p);   /* Player.as:126-183 allows firing during spawn (X or SPACE) */
 
     fp_camera.x = e->x - fp_half_width + ent_hspeed(e) * SPEC_PLAYER_CAMERA_SPAWN_LEAD_HSPEED;
     fp_camera.y = e->y - fp_half_height;
@@ -80,7 +107,8 @@ static void update_normal(Player *p)
     if (in_down(ACT_LEFT))  p->body_angle += p->turn;
     if (in_down(ACT_RIGHT)) p->body_angle -= p->turn;
 
-    /* 4. TODO shooting */
+    /* 4. shooting */
+    do_shooting(p);
 
     /* 5. speed clamp — re-projects velocity onto `direction` (set at step 7) */
     if (ent_speed(e) < SPEC_PLAYER_PHYSICS_SPEED_MIN)

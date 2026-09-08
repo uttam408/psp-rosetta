@@ -24,6 +24,7 @@ uint32_t fp_random_seed(void);
 double   fp_random(void);            /* [0,1)  — advances the LCG              */
 uint32_t fp_rand(uint32_t amount);   /* floor(random()*amount)                */
 
+double fp_choose2(double a, double b);   /* FP.choose(a,b) — rand(2) ? b : a */
 double fp_approach(double v, double target, double amount);
 double fp_lerp(double a, double b, double t);
 double fp_distance(double x1, double y1, double x2, double y2);

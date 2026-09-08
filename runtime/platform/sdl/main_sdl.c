@@ -13,7 +13,7 @@
 /* headless capture: --shot <ticks> <out.bmp> [inputscript]
  * inputscript: one char/tick, last char repeats — T thrust, L left, R right,
  * F fire, S start, . none. */
-static int run_shot(int ticks, const char *out, const char *script);
+static int run_shot2(int ticks, const char *out, const char *script, bool seq);
 
 int main(int argc, char **argv)
 {
@@ -30,9 +30,10 @@ int main(int argc, char **argv)
     game_start();
 
     for (int i = 2; i + 2 < argc; i++) {
-        if (SDL_strcmp(argv[i], "--shot") == 0) {
-            int rc = run_shot(SDL_atoi(argv[i + 1]), argv[i + 2],
-                              i + 3 < argc ? argv[i + 3] : "");
+        if (SDL_strcmp(argv[i], "--shot") == 0 || SDL_strcmp(argv[i], "--frames") == 0) {
+            bool seq = SDL_strcmp(argv[i], "--frames") == 0;
+            int rc = run_shot2(SDL_atoi(argv[i + 1]), argv[i + 2],
+                               i + 3 < argc ? argv[i + 3] : "", seq);
             snd_shutdown(); gfx_shutdown(); pak_close();
             return rc;
         }
@@ -85,17 +86,23 @@ int main(int argc, char **argv)
 
 static void feed(char c)
 {
+    /* single: T thrust  L left  R right  F fire  S start  . none
+       combo:  a=T+F  b=L+F  c=R+F  d=T+L  e=T+R  g=T+L+F  h=T+R+F */
+    bool T = c=='T'||c=='a'||c=='d'||c=='e'||c=='g'||c=='h';
+    bool L = c=='L'||c=='b'||c=='d'||c=='g';
+    bool R = c=='R'||c=='c'||c=='e'||c=='h';
+    bool F = c=='F'||c=='a'||c=='b'||c=='c'||c=='g'||c=='h';
     in_begin_frame();
-    in_set(ACT_THRUST, c == 'T');
-    in_set(ACT_LEFT,   c == 'L');
-    in_set(ACT_RIGHT,  c == 'R');
-    in_set(ACT_FIRE,   c == 'F');
+    in_set(ACT_THRUST, T);
+    in_set(ACT_LEFT,   L);
+    in_set(ACT_RIGHT,  R);
+    in_set(ACT_FIRE,   F);
     in_set(ACT_START,  c == 'S');
 }
 
-static int run_shot(int ticks, const char *out, const char *script)
+static int run_shot2(int ticks, const char *out, const char *script, bool seq)
 {
-    char buf[4096];
+    char buf[8192];
     if (script[0] == '@') {                  /* @file — read script from a file */
         FILE *f = fopen(script + 1, "rb");
         size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0;
@@ -105,14 +112,24 @@ static int run_shot(int ticks, const char *out, const char *script)
         script = buf;
     }
     size_t sl = SDL_strlen(script);
+    int saved = 0;
     for (int i = 0; i < ticks; i++) {
         char c = sl ? script[(size_t)i < sl ? (size_t)i : sl - 1] : '.';
         feed(c);
         game_tick();
+        if (seq) {
+            game_draw();
+            char path[512];
+            SDL_snprintf(path, sizeof path, "%s/%04d.bmp", out, i);
+            if (gfx_save_bmp(path)) saved++;
+        }
     }
-    game_draw();
-    bool ok = gfx_save_bmp(out);
-    printf("shot: %d ticks, script=\"%s\" -> %s (%s)\n",
-           ticks, script, out, ok ? "ok" : "FAIL");
-    return ok ? 0 : 2;
+    if (!seq) {
+        game_draw();
+        bool ok = gfx_save_bmp(out);
+        printf("shot: %d ticks -> %s (%s)\n", ticks, out, ok ? "ok" : "FAIL");
+        return ok ? 0 : 2;
+    }
+    printf("frames: %d/%d saved to %s/\n", saved, ticks, out);
+    return saved ? 0 : 2;
 }

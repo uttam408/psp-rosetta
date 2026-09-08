@@ -41,6 +41,8 @@ uint32_t fp_rand(uint32_t amount)
     return (uint32_t)(fp_random() * (double)amount);
 }
 
+double fp_choose2(double a, double b) { return fp_rand(2) ? b : a; }
+
 double fp_approach(double v, double target, double amount)
 {
     if (v < target) return (target < v + amount) ? target : v + amount;

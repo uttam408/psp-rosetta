@@ -17,6 +17,10 @@ typedef struct Game {
     Entity *water;         /* world-space y == SPEC_WORLD_WATER_Y band */
     Entity *space;
     bool    music_started;
+
+    bool    spawning;      /* combat begun (UBoot gone)               */
+    int     t_spawn;       /* frames to next spawnMoreEnemies tick    */
+    bool    game_over;     /* player entity removed                   */
 } Game;
 
 extern Game g_game;
@@ -29,6 +33,12 @@ Entity *player_spawn(double x, double y);
 Entity *uboot_spawn(void);
 Entity *backdrop_spawn_water(void);
 Entity *backdrop_spawn_space(void);
+Entity *bullet_spawn(double x, double y, double angle);
+Entity *ebullet_spawn(double x, double y, double angle, double speed);
+Entity *brit_spawn(double x, double y);
+
+void player_getdamage(Entity *player, int amount);   /* Player.as:380 getDamage */
+void game_begin_combat(void);   /* UBoot.removeThis -> spawnEnemies + start loop */
 
 void game_start(void);   /* build the attract-mode world */
 void game_tick(void);    /* per fixed frame: orchestration around world_update  */

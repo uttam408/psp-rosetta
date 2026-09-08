@@ -39,7 +39,7 @@ static void uboot_update(Entity *e)
             ent_set_vspeed(e, 1);
             u->t_remove = SPEC_UBOOT_LAUNCH_REMOVE_AFTER;
         } else if (u->t_remove > 0 && --u->t_remove == 0) {
-            /* TODO: Game.spawnEnemies() here */
+            game_begin_combat();               /* Game.spawnEnemies() */
             world_remove(e->world, e);
         }
     }
