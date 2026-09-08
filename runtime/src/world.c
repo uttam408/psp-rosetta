@@ -80,6 +80,20 @@ Entity *world_first_type(World *w, EntityType t)
     return NULL;
 }
 
+Entity *world_furthest_type(World *w, EntityType t, const Entity *from)
+{
+    Entity *best = NULL;
+    double bestd = -1;
+    for (int i = 0; i < w->count; i++) {
+        Entity *e = w->ents[i];
+        if (!e->alive || e->type != t || e == from) continue;
+        double dx = e->x - from->x, dy = e->y - from->y;
+        double d = dx * dx + dy * dy;
+        if (d > bestd) { bestd = d; best = e; }
+    }
+    return best;
+}
+
 Entity *world_collide(World *w, EntityType t, Entity *a, double ax, double ay)
 {
     for (int i = 0; i < w->count; i++) {

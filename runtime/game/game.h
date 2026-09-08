@@ -36,6 +36,7 @@ Entity *backdrop_spawn_space(void);
 Entity *bullet_spawn(double x, double y, double angle);
 Entity *ebullet_spawn(double x, double y, double angle, double speed);
 Entity *brit_spawn(double x, double y);
+Entity *jet_spawn(double x, double y);
 Entity *boot_spawn(double x);      /* battleship */
 Entity *bootje_spawn(double x);    /* boat */
 

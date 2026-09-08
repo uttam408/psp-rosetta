@@ -24,6 +24,9 @@ void    world_render(World *w);              /* layer descending, then by add or
 
 int      world_count_type(World *w, EntityType t);
 Entity  *world_first_type(World *w, EntityType t);
+/* FlashPunk World.furthestFromEntity: the live entity of type `t`, != from,
+   whose centre is furthest from `from` (NULL if none) */
+Entity  *world_furthest_type(World *w, EntityType t, const Entity *from);
 /* returns the first live entity of type `t` whose hitbox overlaps (a placed at ax,ay) */
 Entity  *world_collide(World *w, EntityType t, Entity *a, double ax, double ay);
 

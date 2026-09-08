@@ -59,8 +59,12 @@ static void brit_update(Entity *e)
     b->body_angle = e->direction;
 
     Entity *pl = player_e();
-    if (pl)
+    if (pl) {
         ent_motion_add(e, fp_angle(e->x, e->y, pl->x, pl->y), b->reaction);
+    } else {
+        Entity *tgt = world_furthest_type(&g_game.world, ETYPE_ENEMY, e);
+        if (tgt) e->direction = fp_angle(e->x, e->y, tgt->x, tgt->y);
+    }
 
     e->direction += b->turn;
 

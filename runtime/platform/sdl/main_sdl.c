@@ -113,9 +113,14 @@ static int run_shot2(int ticks, const char *out, const char *script, bool seq)
     }
     if (SDL_strncmp(script, "!SEA", 4) == 0) {   /* debug: drop in sea units */
         script += 4;
-        for (int i = 0; i < 100; i++) game_tick();     /* let the sub launch nothing */
+        for (int i = 0; i < 100; i++) game_tick();
         boot_spawn(fp_camera.x + 260);
         bootje_spawn(fp_camera.x + 120);
+    } else if (SDL_strncmp(script, "!JET", 4) == 0) {
+        script += 4;
+        for (int i = 0; i < 100; i++) game_tick();
+        for (int i = 0; i < 4; i++)
+            jet_spawn(fp_camera.x + 120 + i * 90, 500 + (i & 1) * 30);
     }
     size_t sl = SDL_strlen(script);
     int saved = 0;

@@ -8,7 +8,7 @@ OBJS = \
   src/fp.o src/entity.o src/world.o src/pak.o src/input.o \
   src/audio_mix.o src/drmp3_impl.o \
   game/game.o game/player.o game/uboot.o game/backdrop.o \
-  game/fx.o game/enemy.o game/bullet.o game/brit.o game/sea.o game/text.o \
+  game/fx.o game/enemy.o game/bullet.o game/brit.o game/jet.o game/sea.o game/text.o \
   platform/psp/gfx_psp.o platform/psp/input_psp.o platform/psp/audio_psp.o \
   platform/psp/main_psp.o
 

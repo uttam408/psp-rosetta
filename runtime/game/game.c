@@ -98,9 +98,9 @@ static void spawn_more_enemies(void)
         for (int i = 0; i <= (int)(gh / 5) + 1; i++) brit_spawn(sx, sy);
         break;
     case 1: bootje_spawn(sx); break;               /* one boat */
-    case 2:                                        /* TODO Jet swarm -> Brit for now */
+    case 2:                                        /* Jet swarm */
         for (int i = 0; i <= (int)(gh / 15) + 1; i++)
-            brit_spawn(sx + fp_rand(100) - 50, sy + fp_rand(100) - 50);
+            jet_spawn(sx + fp_rand(100) - 50, sy + fp_rand(100) - 50);
         break;
     case 3: boot_spawn(sx); break;                 /* one battleship */
     }
