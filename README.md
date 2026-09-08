@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="PSP-Rosetta" width="560">
+</p>
+
 # psp-rosetta
 
 Asset pipeline for re-targeting Flash / Java browser games to homebrew PSP.

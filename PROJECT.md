@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="PSP-Rosetta" width="560">
+</p>
+
 # PSP-Rosetta
 
 Re-targeting old browser games to homebrew / custom-firmware PSP.
