@@ -53,6 +53,7 @@ void game_start(void)
     if (!text_ready) { text_init(); text_ready = true; }
 
     int hi = hiscore_load();
+    world_clear(&g_game.world);          /* recycle the previous game's entities */
     memset(&g_game, 0, sizeof g_game);
     world_init(&g_game.world);
     fp_seed(1);   /* TODO: match FlashPunk's seed init for replay parity */

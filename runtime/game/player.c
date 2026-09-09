@@ -4,9 +4,9 @@
  * water-splash visuals. Marked TODO inline. */
 #include "game.h"
 #include "fx.h"
+#include "pool.h"
 #include "../src/input.h"
 #include "../src/audio.h"
-#include <stdlib.h>
 
 typedef struct {
     Entity e;
@@ -20,6 +20,9 @@ typedef struct {
     double wings_scale_y;
     GfxTex *body, *wings, *boost, *boost_start;
 } Player;
+
+POOL(player_pool, Player, 2)
+static void player_recycle(Entity *e) { player_pool_put(e->user); }
 
 static double space_y(void) { return SPEC_WORLD_SPACE_Y; }
 static double water_y(void) { return SPEC_WORLD_WATER_Y; }
@@ -217,12 +220,14 @@ static void player_render(Entity *e)
 
 Entity *player_spawn(double px, double py)
 {
-    Player *p = calloc(1, sizeof *p);
+    Player *p = player_pool_get();
+    if (!p) return NULL;
     ent_init(&p->e, ETYPE_PLAYER);
     p->e.user = p;
     p->e.update = player_update;
     p->e.render = player_render;
-    p->e.layer = 100;
+    p->e.recycle = player_recycle;
+    p->e.layer = LAYER_PLAYER;
 
     p->e.x = px;
     p->e.y = py;

@@ -6,6 +6,20 @@ enum { FMT_8888 = 0, FMT_5551 = 1, FMT_4444 = 2, FMT_IDX8 = 3 };
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 
+/* inverse of pipeline/convert/textures.py _swizzle (16-byte x 8-row blocks) */
+static void unswizzle(const uint8_t *src, uint8_t *dst, int bytewidth, int height)
+{
+    int rowblocks = bytewidth / 16;
+    for (int y = 0; y < height; y++) {
+        int by = (y >> 3) * rowblocks;
+        int iny = (y & 7) << 4;
+        for (int x = 0; x < bytewidth; x++) {
+            int block = ((x >> 4) + by) << 7;
+            dst[y * bytewidth + x] = src[block + (x & 15) + iny];
+        }
+    }
+}
+
 bool ptx_decode(const uint8_t *data, size_t len, PtxImage *out)
 {
     if (!data || len < 12 || memcmp(data, "PTX1", 4) != 0) return false;
@@ -14,7 +28,6 @@ bool ptx_decode(const uint8_t *data, size_t len, PtxImage *out)
     uint8_t fmt = data[8];
     uint8_t flags = data[9];
     uint16_t pal_count = rd16(data + 10);
-    if (flags & 1) return false;              /* swizzled — not handled here */
 
     const uint8_t *pal = data + 12;
     const uint8_t *px = pal + pal_count * 4;
@@ -28,8 +41,19 @@ bool ptx_decode(const uint8_t *data, size_t len, PtxImage *out)
     }
     if ((size_t)(px - data) + need_px > len) return false;
 
+    uint8_t *unsw = NULL;
+    if (flags & 1) {                          /* PSP-swizzled — undo it first */
+        int bpp = (fmt == FMT_8888) ? 4 : (fmt == FMT_IDX8) ? 1 : 2;
+        int bw = w * bpp;
+        if (bw % 16 || h % 8) return false;
+        unsw = malloc(need_px);
+        if (!unsw) return false;
+        unswizzle(px, unsw, bw, h);
+        px = unsw;
+    }
+
     uint8_t *rgba = malloc((size_t)w * h * 4);
-    if (!rgba) return false;
+    if (!rgba) { free(unsw); return false; }
 
     for (int i = 0; i < w * h; i++) {
         uint8_t r, g, b, a;
@@ -53,6 +77,7 @@ bool ptx_decode(const uint8_t *data, size_t len, PtxImage *out)
         }
         rgba[i * 4] = r; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = b; rgba[i * 4 + 3] = a;
     }
+    free(unsw);
     out->w = w; out->h = h; out->rgba = rgba;
     return true;
 }

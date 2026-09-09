@@ -4,8 +4,8 @@
 #include "game.h"
 #include "enemy.h"
 #include "fx.h"
+#include "pool.h"
 #include "../src/audio.h"
-#include <stdlib.h>
 
 typedef struct {
     Enemy  en;
@@ -14,6 +14,9 @@ typedef struct {
     double body_angle, wings_scale_y;
     GfxTex *body, *wings;
 } Brit;
+
+POOL(brit_pool, Brit, 96)
+static void brit_recycle(Entity *e) { brit_pool_put(e->user); }
 
 static Entity *player_e(void) { return world_first_type(&g_game.world, ETYPE_PLAYER); }
 
@@ -97,12 +100,14 @@ static void brit_render(Entity *e)
 
 Entity *brit_spawn(double x, double y)
 {
-    Brit *b = calloc(1, sizeof *b);
+    Brit *b = brit_pool_get();
+    if (!b) return NULL;
     ent_init(&b->en.e, ETYPE_ENEMY);
     b->en.e.user = b;
     b->en.e.update = brit_update;
     b->en.e.render = brit_render;
-    b->en.e.layer = 90;
+    b->en.e.recycle = brit_recycle;
+    b->en.e.layer = LAYER_ENEMY;
     b->en.e.x = x; b->en.e.y = y;
     b->en.e.gravity = 0.02;
     b->en.e.friction = 0.1;

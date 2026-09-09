@@ -4,6 +4,15 @@
 
 void world_init(World *w) { memset(w, 0, sizeof *w); }
 
+void world_clear(World *w)
+{
+    for (int i = 0; i < w->count; i++)
+        if (w->ents[i]->recycle) w->ents[i]->recycle(w->ents[i]);
+    for (int i = 0; i < w->pending_count; i++)
+        if (w->pending[i]->recycle) w->pending[i]->recycle(w->pending[i]);
+    memset(w, 0, sizeof *w);
+}
+
 Entity *world_add(World *w, Entity *e)
 {
     if (w->pending_count < WORLD_MAX) {
@@ -34,12 +43,12 @@ void world_update(World *w)
         Entity *e = w->ents[i];
         if (e->alive && e->update) e->update(e);
     }
-    /* sweep dead */
+    /* sweep dead, returning each to its pool exactly once */
     int n = 0;
     for (int i = 0; i < w->count; i++) {
         Entity *e = w->ents[i];
         if (e->alive) w->ents[n++] = e;
-        else if (e->render == NULL && e->update == NULL) { /* nothing */ }
+        else if (e->recycle) e->recycle(e);
     }
     w->count = n;
     fp_frame++;

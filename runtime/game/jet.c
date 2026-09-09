@@ -4,8 +4,8 @@
 #include "game.h"
 #include "enemy.h"
 #include "fx.h"
+#include "pool.h"
 #include "../src/audio.h"
-#include <stdlib.h>
 
 typedef struct {
     Enemy   en;
@@ -14,6 +14,9 @@ typedef struct {
     double  body_angle, wings_scale_y;
     GfxTex *body, *wings;
 } Jet;
+
+POOL(jet_pool, Jet, 80)
+static void jet_recycle(Entity *e) { jet_pool_put(e->user); }
 
 static Entity *player_e(void) { return world_first_type(&g_game.world, ETYPE_PLAYER); }
 static double  roll_speed(void) { return 14.0 + fp_rand(4); }
@@ -84,12 +87,14 @@ static void jet_render(Entity *e)
 
 Entity *jet_spawn(double x, double y)
 {
-    Jet *j = calloc(1, sizeof *j);
+    Jet *j = jet_pool_get();
+    if (!j) return NULL;
     ent_init(&j->en.e, ETYPE_ENEMY);
     j->en.e.user = j;
     j->en.e.update = jet_update;
     j->en.e.render = jet_render;
-    j->en.e.layer = 90;
+    j->en.e.recycle = jet_recycle;
+    j->en.e.layer = LAYER_ENEMY;
     j->en.e.x = x; j->en.e.y = y;
     j->en.e.gravity = 0.02;
     j->en.e.friction = 0.1;

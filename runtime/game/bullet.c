@@ -2,10 +2,8 @@
 #include "game.h"
 #include "enemy.h"
 #include "fx.h"
+#include "pool.h"
 #include "../src/audio.h"
-#include <stdlib.h>
-
-typedef struct { Entity e; int life; GfxTex *t; } Bullet;
 
 static double player_x(void)
 {
@@ -13,7 +11,16 @@ static double player_x(void)
     return p ? p->x : 0;
 }
 
+static void splash(double x)
+{
+    fx_anim("image/interaction/fx/watersplash/splash", x, SPEC_WORLD_WATER_Y, 0.3);
+}
+
 /* --- player Bullet -------------------------------------------------------- */
+typedef struct { Entity e; int life; GfxTex *t; } Bullet;
+POOL(bullet_pool, Bullet, 96)
+static void bullet_recycle(Entity *e) { bullet_pool_put(e->user); }
+
 static void bullet_update(Entity *e)
 {
     Bullet *b = e->user;
@@ -28,11 +35,7 @@ static void bullet_update(Entity *e)
         world_remove(e->world, e);
         return;
     }
-    if (e->y > SPEC_WORLD_WATER_Y) {
-        fx_anim("image/interaction/fx/watersplash/splash", e->x, SPEC_WORLD_WATER_Y, 0.3);
-        world_remove(e->world, e);
-        return;
-    }
+    if (e->y > SPEC_WORLD_WATER_Y) { splash(e->x); world_remove(e->world, e); return; }
     if (--b->life <= 0) {
         fx_anim("image/interaction/fx/bullethit/bullethit", e->x, e->y, 0.5);
         world_remove(e->world, e);
@@ -47,12 +50,14 @@ static void bullet_render(Entity *e)
 
 Entity *bullet_spawn(double x, double y, double angle)
 {
-    Bullet *b = calloc(1, sizeof *b);
+    Bullet *b = bullet_pool_get();
+    if (!b) return NULL;
     ent_init(&b->e, ETYPE_BULLET);
     b->e.user = b;
     b->e.update = bullet_update;
     b->e.render = bullet_render;
-    b->e.layer = 2000;
+    b->e.recycle = bullet_recycle;
+    b->e.layer = LAYER_BEHIND;
     b->e.x = x; b->e.y = y;
     ent_set_hitbox(&b->e, SPEC_PLAYER_WEAPON_BULLET_HITBOX,
                    SPEC_PLAYER_WEAPON_BULLET_HITBOX, 8, 8);
@@ -66,6 +71,8 @@ Entity *bullet_spawn(double x, double y, double angle)
 
 /* --- enemy EBullet ------------------------------------------------------- */
 typedef struct { Entity e; int life; const PakAsset *a; GfxTex *t; double fr; } EBullet;
+POOL(ebullet_pool, EBullet, 128)
+static void ebullet_recycle(Entity *e) { ebullet_pool_put(e->user); }
 
 static void ebullet_update(Entity *e)
 {
@@ -80,11 +87,7 @@ static void ebullet_update(Entity *e)
         world_remove(e->world, e);
         return;
     }
-    if (e->y > SPEC_WORLD_WATER_Y) {
-        fx_anim("image/interaction/fx/watersplash/splash", e->x, SPEC_WORLD_WATER_Y, 0.3);
-        world_remove(e->world, e);
-        return;
-    }
+    if (e->y > SPEC_WORLD_WATER_Y) { splash(e->x); world_remove(e->world, e); return; }
     if (--b->life <= 0) world_remove(e->world, e);
 }
 
@@ -99,12 +102,14 @@ static void ebullet_render(Entity *e)
 
 Entity *ebullet_spawn(double x, double y, double angle, double speed)
 {
-    EBullet *b = calloc(1, sizeof *b);
+    EBullet *b = ebullet_pool_get();
+    if (!b) return NULL;
     ent_init(&b->e, ETYPE_EBULLET);
     b->e.user = b;
     b->e.update = ebullet_update;
     b->e.render = ebullet_render;
-    b->e.layer = 2000;
+    b->e.recycle = ebullet_recycle;
+    b->e.layer = LAYER_BEHIND;
     b->e.x = x; b->e.y = y;
     ent_set_hitbox(&b->e, 8, 8, 4, 4);
     b->life = 120;                    /* EBullet.as Alarm(120) */

@@ -17,6 +17,7 @@ typedef struct World {
 } World;
 
 void    world_init(World *w);
+void    world_clear(World *w);   /* recycle every entity, then zero (for restart) */
 Entity *world_add(World *w, Entity *e);
 void    world_remove(World *w, Entity *e);   /* marks !alive; swept post-update */
 void    world_update(World *w);

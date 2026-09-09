@@ -27,6 +27,7 @@ struct Entity {
 
     void (*update)(Entity *self);
     void (*render)(Entity *self);
+    void (*recycle)(Entity *self);  /* world calls this once, after death sweep */
     void  *user;             /* owning game object                            */
     struct World *world;
 };

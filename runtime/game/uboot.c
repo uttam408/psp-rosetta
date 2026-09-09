@@ -2,9 +2,9 @@
  * Milestone: rise, ready, launch the player, dive, remove. Not yet: the floating
  * logo, the "PRESS UP TO LAUNCH" text, enemy spawn on removal (TODO). */
 #include "game.h"
+#include "pool.h"
 #include "../src/input.h"
 #include "../src/audio.h"
-#include <stdlib.h>
 
 typedef struct {
     Entity e;
@@ -15,6 +15,9 @@ typedef struct {
     bool   launched;
     GfxTex *hull;
 } UBoot;
+
+POOL(uboot_pool, UBoot, 2)
+static void uboot_recycle(Entity *e) { uboot_pool_put(e->user); }
 
 static void uboot_update(Entity *e)
 {
@@ -66,12 +69,14 @@ static void uboot_render(Entity *e)
 
 Entity *uboot_spawn(void)
 {
-    UBoot *u = calloc(1, sizeof *u);
+    UBoot *u = uboot_pool_get();
+    if (!u) return NULL;
     ent_init(&u->e, ETYPE_UBOOT);
     u->e.user = u;
     u->e.update = uboot_update;
     u->e.render = uboot_render;
-    u->e.layer = 50;
+    u->e.recycle = uboot_recycle;
+    u->e.layer = LAYER_ENEMY;
 
     const PakAsset *a = pak_find("image/interaction/uboot/uboot");
     double hh = a ? a->h / 2.0 : 24;

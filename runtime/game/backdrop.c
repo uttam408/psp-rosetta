@@ -2,9 +2,12 @@
  * Both are horizontal bands (FlashPunk TiledImage) that follow the camera in X.
  * Water surface sits at world y = SPEC_WORLD_WATER_Y; Space band tops out the sky. */
 #include "game.h"
-#include <stdlib.h>
+#include "pool.h"
 
 typedef struct { Entity e; GfxTex *t; double band_y; } Band;
+
+POOL(band_pool, Band, 4)
+static void band_recycle(Entity *e) { band_pool_put(e->user); }
 
 static void band_render(Entity *e)
 {
@@ -17,11 +20,13 @@ static void band_render(Entity *e)
 
 static Entity *band_spawn(EntityType type, const char *tex_id, double band_y, int layer)
 {
-    Band *b = calloc(1, sizeof *b);
+    Band *b = band_pool_get();
+    if (!b) return NULL;
     ent_init(&b->e, type);
     b->e.user = b;
     b->e.render = band_render;      /* no update */
     b->e.update = NULL;
+    b->e.recycle = band_recycle;
     b->e.layer = layer;
     b->e.collidable = false;
     b->t = tex(tex_id);
@@ -32,11 +37,11 @@ static Entity *band_spawn(EntityType type, const char *tex_id, double band_y, in
 Entity *backdrop_spawn_water(void)
 {
     return band_spawn(ETYPE_WATER, "image/interaction/water/water",
-                      SPEC_WORLD_WATER_Y, 20);
+                      SPEC_WORLD_WATER_Y, LAYER_WATER);
 }
 
 Entity *backdrop_spawn_space(void)
 {
     return band_spawn(ETYPE_SPACE, "image/interaction/space/space",
-                      SPEC_WORLD_SPACE_Y, 30);
+                      SPEC_WORLD_SPACE_Y, LAYER_SPACE);
 }

@@ -6,8 +6,8 @@
 #include "game.h"
 #include "enemy.h"
 #include "fx.h"
+#include "pool.h"
 #include "../src/audio.h"
-#include <stdlib.h>
 
 typedef struct {
     Enemy   en;
@@ -24,6 +24,9 @@ typedef struct {
     const char *fire_snd;
     const char *sink_fx;      /* explosion spawned x3 on death + randomly   */
 } Sea;
+
+POOL(sea_pool, Sea, 24)
+static void sea_recycle(Entity *e) { sea_pool_put(e->user); }
 
 static Entity *player_e(void) { return world_first_type(&g_game.world, ETYPE_PLAYER); }
 
@@ -111,11 +114,13 @@ static void sea_render(Entity *e)
 
 static Sea *sea_new(EntityType t, double x, const char *tex_id, int layer)
 {
-    Sea *s = calloc(1, sizeof *s);
+    Sea *s = sea_pool_get();
+    if (!s) return NULL;
     ent_init(&s->en.e, t);
     s->en.e.user = s;
     s->en.e.update = sea_update;
     s->en.e.render = sea_render;
+    s->en.e.recycle = sea_recycle;
     s->en.e.layer = layer;
     s->en.on_death = sea_sink_start;
 
@@ -134,7 +139,8 @@ static Sea *sea_new(EntityType t, double x, const char *tex_id, int layer)
 /* Boot — battleship (Interaction/Enemies/Boot.as) */
 Entity *boot_spawn(double x)
 {
-    Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/boot/ship", 2000);
+    Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/boot/ship", LAYER_BEHIND);
+    if (!s) return NULL;
     s->en.health = 60;
     s->en.score = SPEC_SCORE_BOOT;
     s->en.kill_slot = 3;
@@ -155,7 +161,8 @@ Entity *boot_spawn(double x)
 /* Bootje — boat (Interaction/Enemies/Bootje.as) */
 Entity *bootje_spawn(double x)
 {
-    Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/bootje/ship", 90);
+    Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/bootje/ship", LAYER_ENEMY);
+    if (!s) return NULL;
     s->en.health = 20;
     s->en.score = SPEC_SCORE_BOOTJE;
     s->en.kill_slot = 2;
