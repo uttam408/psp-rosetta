@@ -28,6 +28,7 @@ typedef struct {
     int lastmaf;
     float scale;           /* 800x450 -> frame, 0.6 for 480x270 */
     int trk;               /* 0 = normal render */
+    bool lightson;
     Frame *frame;
 } Medium;
 

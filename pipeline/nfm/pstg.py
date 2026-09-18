@@ -2,7 +2,7 @@
 
 Little-endian::
 
-    HEADER  16 bytes:  "PSTG"  u16 version(=1)  u16 flags(bit0 lightson)
+    HEADER  14 bytes:  "PSTG"  u16 version(=1)  u16 flags(bit0 lightson)
                        u16 present   u16 nobjs   u16 pad
     present bits: 0 snap 1 sky 2 ground 3 polys 4 fog 5 texture 6 clouds
                   7 fadefrom 8 density 9 mountains 10 nlaps

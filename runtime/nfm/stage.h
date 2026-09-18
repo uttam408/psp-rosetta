@@ -1,0 +1,45 @@
+/* stage.h — .pstg loader (layout: pipeline/nfm/pstg.py) and scene instantiation. */
+#ifndef NFM_STAGE_H
+#define NFM_STAGE_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include "medium.h"
+
+enum { ST_SET, ST_CHK, ST_FIX, ST_PILE, ST_MAXR, ST_MAXL, ST_MAXT, ST_MAXB };
+
+typedef struct { uint8_t op, flags; int16_t id; int32_t a[5]; } StObj;  /* 24 bytes */
+
+typedef struct {
+    bool lightson;
+    uint16_t present;
+    int16_t snap[3], sky[3], ground[3], polys[3], fog[3], texture[4], clouds[5];
+    int32_t fadefrom, density, mountains, nlaps;
+    uint32_t nobjs;
+    StObj *objs;                 /* malloc'd copy */
+    char name[256], track[256];
+    int16_t volume; int32_t size;
+} Stage;
+
+bool stage_load(Stage *s, const uint8_t *d, size_t n);
+void stage_free(Stage *s);
+
+/* replay the environment directives through Medium's setters, in stage-file order */
+void stage_apply_env(const Stage *s, Medium *m);
+
+/* the placed pieces of a stage */
+typedef struct {
+    Inst *inst;
+    uint32_t n;
+    PMesh *meshes;               /* one per distinct piece id */
+    int nmesh_slots;
+    uint32_t skipped;            /* directives not yet instantiated (pile, walls, unknown ids) */
+} Scene;
+
+/* looks pieces up in the pak as mesh/piece/<name>; needs env applied first (snap colours) */
+bool scene_build(Scene *sc, const Stage *s, Medium *m);
+void scene_free(Scene *sc);
+void scene_draw(Medium *m, Scene *sc);   /* backdrop, then objects far-to-near by ContO.dist */
+
+#endif

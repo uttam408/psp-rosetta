@@ -122,8 +122,8 @@ gameplay, and keep that commit as the fallback.
 |---|---|---|
 | M0 | **Pipeline** (this PR) | `build --game nfm` yields a pak; tests green |
 | M1 | Platform skeleton: reuse `runtime/src` + `platform/{sdl,psp}`; SDL headless screenshot and bench mode *first* | **SDL half done** (`runtime/nfm/`, `Makefile.nfm`: `--shot`, `--bench`, `--list`). PSP/PPSSPP half not started |
-| M2 | Model loader: `.pmesh` -> draw a car and a road piece, orbit camera | **Loader + CPU renderer done**: all 84 meshes load; `mustang` and `sroad` render (0.075 ms/frame on the host, 124 polys). Not yet compared against the original's render; shading is a placeholder until `Plane` lighting (M3); wheels are procedural, so not drawn |
-| M3 | `Medium` + `Plane`: camera, sort, per-poly lighting, fog, sky/ground; stage loader (`set`/`chk`/`fix`, then `pile`/mountains/walls) | stage 1 renders end to end, fly-through |
+| M2 | Model loader: `.pmesh` -> draw a car and a road piece, orbit camera | **Done**: all 84 meshes load (`.pmesh` v2 carries `disline`, `disp`, `grounded`, stonecold/newstone). Wheels are procedural, so not drawn |
+| M3 | `Medium` + `Plane`: camera, sort, per-poly lighting, fog, sky/ground; stage loader (`set`/`chk`/`fix`, then `pile`/mountains/walls) | **Core done, not compared to the original yet.** `runtime/nfm/medium.c` ports `Plane.d`, `ContO.d` and `Medium.d` (sky and ground bands) in the original 800x450 integer space, scaled by 0.6 only at fill time. `stage.c` loads `.pstg`, replays the environment directives and places `set`/`chk`/`fix` pieces. `nfm_view <pak> data/stage/1 --shot out.bmp` renders the intro stage (490 polys, 0.18 ms/frame on the host; stage 10: 196 pieces, 0.31 ms). **Still missing:** `pile` (3366 directives), walls (`maxr/l/t/b`), mountains, clouds, stars, shadows, wheels, damage/chip effects, road markings for `flx` polys |
 | M4 | `Mad` + `Wheels` + `Trackers`: physics and collision, car drives | drive stage 1 on the SDL build |
 | M5 | `Control` + PSP input, checkpoints, laps, `Record` | complete a race; replay round-trips |
 | M6 | **Fidelity harness** (replay diff vs original) — before anything cosmetic | see below |
@@ -137,10 +137,31 @@ feed the same recorded inputs to (a) the original Java, headless, and (b) the po
 diff car state (pos / vel / damage) per frame.
 
 Constraint discovered while planning: the only JDK on the dev machine is Homebrew's
-JDK 26, which **no longer has `java.applet`**, and the original extends `Applet`. Either
+JDK 26 (`/opt/homebrew/opt/openjdk/bin/java`; the `java` on `PATH` is the macOS stub),
+which **no longer has `java.applet`**, and the original extends `Applet`. Either
 install a Java 8-era JDK (Temurin 8) or write a ~50-line harness that stubs
 `java.applet.Applet` and drives `Mad`/`Control`/`Medium` directly with no AWT window.
-The second is more useful long-term (headless CI).
+The second is more useful long-term (headless CI). JDK 26 does run plain non-applet Java,
+which is how the trig table below was checked.
+
+### What M3 established
+
+- **Trig is a table.** `Medium` builds `tsin`/`tcos` as `(float)Math.sin(i * 0.017453292519943295)`
+  for integer degrees and everything indexes it. `spec/gen_nfm_trig.py` emits the same values
+  as hex-float literals (`runtime/nfm/gen/ntrig_table.h`); all 360 entries were compared
+  bit-for-bit against a Java 26 run. No libm trig is needed in game code.
+- **Build flags** `-ffp-contract=off -fwrapv` (fused multiply-add and signed-overflow
+  behaviour otherwise change results Java defines). Add the same to the PSP build.
+- **`Plane.av` is last frame's key.** Polygons are painter-sorted by the `av` computed while
+  drawing the *previous* frame (`ContO.d` ranks by it before `Plane.d` refreshes it), and
+  objects likewise by `ContO.dist`. A one-frame screenshot therefore draws in index order;
+  the viewer renders warm-up frames first.
+- **Procyon artifact.** `n11 *= (int)0.991` in `Medium.d` is `(int)(n11 * 0.991)` in the
+  original; read literally it paints the upper sky black. Expect more of these
+  (`int op= double`) in `Mad`.
+- **Deviation from the original:** none deliberate yet, but the fill is centre-sampled
+  scanline, not Java2D's `fillPolygon` rule, so edge pixels can differ.
+- **Not ported (cosmetic, `Math.random`-driven):** damage bend/shatter, chips, dust, sparks.
 
 ### Luftrauser bugs to pre-empt (from `luftrauser-port-notes.md`)
 
@@ -167,9 +188,12 @@ The second is more useful long-term (headless CI).
    replayer to the PSP runtime (tiny on disk, exact); (b) render each to Ogg with a
    tracker player offline and reuse the existing Ogg path (bigger, simpler runtime).
    Recommendation: (a). ffmpeg cannot decode them, which is why they are passthrough.
-3. **Stage runtime format.** `.stage.json` is fine for inspection but the PSP runtime
-   shouldn't carry a JSON parser. Binary `PSTG` is a few dozen lines once the loader's
-   needs are known (M3). Do it then, not now.
+3. **Stage runtime format.** Decided and done: binary `.pstg` (`pipeline/nfm/pstg.py`,
+   loader in `runtime/nfm/stage.c`). The directives are stored in the same integers
+   `GameSparker` feeds `Medium`, so the runtime replays them through the same setters.
+   `.stage.json` stays alongside for inspection only. Note the file has no directive
+   order, so the loader applies them in the canonical stage-file order (snap, sky, fog,
+   ground, texture, polys, fadefrom, density).
 4. **`spec/`.** Follow Luftrauser's model: `CarDefine` and the `Mad` constants go in
    `spec/nfm.toml`, each citing its source line, generated into a header.
 

@@ -15,6 +15,7 @@
 #include "../src/pak.h"
 #include "pmesh.h"
 #include "medium.h"
+#include "stage.h"
 
 #define W 480
 #define H 270
@@ -42,6 +43,84 @@ static void render(Medium *m, Inst *o, int yaw, int dist)
     inst_draw(m, o);
 }
 
+/* nfm_view <pak> data/stage/<n> [--shot out.bmp [x z yaw_deg [pitch_deg [height]]]] [--bench]
+ * Camera defaults to just behind the first placed piece. */
+static int stage_main(int argc, char **argv)
+{
+    char id[96];
+    snprintf(id, sizeof id, "%s.pstg", argv[2]);
+    const PakAsset *a = pak_find(argv[2]);
+    if (!a) a = pak_find(id);
+    Stage st;
+    if (!a || !stage_load(&st, a->data, a->size)) { fprintf(stderr, "bad or missing stage: %s\n", argv[2]); return 1; }
+
+    static uint32_t px[W * H];
+    Frame f = { W, H, px };
+    Medium med;
+    medium_init(&med, &f);
+    stage_apply_env(&st, &med);
+    Scene sc;
+    scene_build(&sc, &st, &med);
+    printf("%s \"%s\": %u directives, %u pieces placed, %u skipped\n", argv[2], st.name, st.nobjs, sc.n, sc.skipped);
+
+    int camx = 0, camz = 0, yaw = 0, pitch = 10, height = 300;
+    if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
+    bool shot = false, bench = false;
+    const char *out = NULL;
+    for (int i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) {
+            shot = true; out = argv[++i];
+            int *v[] = { &camx, &camz, &yaw, &pitch, &height };
+            for (int k = 0; k < 5 && i + 1 < argc && argv[i + 1][0] != '-'; k++) *v[k] = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--bench") == 0) bench = true;
+    }
+    med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
+
+    if (shot || bench) {
+        int frames = bench ? 300 : 3;      /* first frames seed Plane.av and ContO.dist */
+        double fq = (double)SDL_GetPerformanceFrequency();
+        Uint64 t0 = SDL_GetPerformanceCounter();
+        for (int i = 0; i < frames; i++) { g_polys_in = g_polys_drawn = 0; scene_draw(&med, &sc); }
+        Uint64 t1 = SDL_GetPerformanceCounter();
+        if (bench) printf("bench: %.3f ms/frame, %d polys/frame\n", (t1 - t0) * 1000.0 / fq / frames, g_polys_drawn);
+        if (shot) {
+            bool ok = save_bmp(&f, out);
+            printf("shot: %d/%d polys drawn -> %s (%s)\n", g_polys_drawn, g_polys_in, out, ok ? "ok" : "FAIL");
+            return ok ? 0 : 2;
+        }
+        return 0;
+    }
+
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) return 1;
+    SDL_Window *win = SDL_CreateWindow("nfm_view", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W * 2, H * 2, 0);
+    SDL_Renderer *r = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
+    SDL_Texture *tex = SDL_CreateTexture(r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, W, H);
+    for (bool run = true; run;) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev))
+            if (ev.type == SDL_QUIT || (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE)) run = false;
+        const Uint8 *k = SDL_GetKeyboardState(NULL);
+        float sy = m_sin(med.xz), cy = m_cos(med.xz);
+        int sp = k[SDL_SCANCODE_LSHIFT] ? 120 : 40;
+        if (k[SDL_SCANCODE_LEFT])  med.xz = (med.xz + 359) % 360;
+        if (k[SDL_SCANCODE_RIGHT]) med.xz = (med.xz + 1) % 360;
+        if (k[SDL_SCANCODE_W]) { med.x += (int)(sy * sp); med.z += (int)(cy * sp); }
+        if (k[SDL_SCANCODE_S]) { med.x -= (int)(sy * sp); med.z -= (int)(cy * sp); }
+        if (k[SDL_SCANCODE_A]) { med.x -= (int)(cy * sp); med.z += (int)(sy * sp); }
+        if (k[SDL_SCANCODE_D]) { med.x += (int)(cy * sp); med.z -= (int)(sy * sp); }
+        if (k[SDL_SCANCODE_UP])   med.zy += med.zy < 90;
+        if (k[SDL_SCANCODE_DOWN]) med.zy -= med.zy > -90;
+        if (k[SDL_SCANCODE_Q]) med.y -= sp;
+        if (k[SDL_SCANCODE_E]) med.y += sp;
+        scene_draw(&med, &sc);
+        SDL_UpdateTexture(tex, NULL, px, W * 4);
+        SDL_RenderCopy(r, tex, NULL, NULL);
+        SDL_RenderPresent(r);
+    }
+    SDL_Quit();
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) { fprintf(stderr, "usage: nfm_view <assets.pak> <mesh-id|--list> [...]\n"); return 1; }
@@ -52,6 +131,7 @@ int main(int argc, char **argv)
             if (strncmp(pak_at(i)->id, "mesh/", 5) == 0) puts(pak_at(i)->id);
         return 0;
     }
+    if (strncmp(argv[2], "data/stage/", 11) == 0) return stage_main(argc, argv);
     const PakAsset *a = pak_find(argv[2]);
     PMesh mesh;
     if (!a || !pmesh_load(&mesh, a->data, a->size)) {
