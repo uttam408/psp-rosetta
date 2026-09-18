@@ -123,7 +123,7 @@ gameplay, and keep that commit as the fallback.
 | M0 | **Pipeline** (this PR) | `build --game nfm` yields a pak; tests green |
 | M1 | Platform skeleton: reuse `runtime/src` + `platform/{sdl,psp}`; SDL headless screenshot and bench mode *first* | **SDL half done** (`runtime/nfm/`, `Makefile.nfm`: `--shot`, `--bench`, `--list`). PSP/PPSSPP half not started |
 | M2 | Model loader: `.pmesh` -> draw a car and a road piece, orbit camera | **Done**: all 84 meshes load (`.pmesh` v2 carries `disline`, `disp`, `grounded`, stonecold/newstone). Wheels are procedural, so not drawn |
-| M3 | `Medium` + `Plane`: camera, sort, per-poly lighting, fog, sky/ground; stage loader (`set`/`chk`/`fix`, then `pile`/mountains/walls) | **Core done, not compared to the original yet.** `runtime/nfm/medium.c` ports `Plane.d`, `ContO.d` and `Medium.d` (sky and ground bands) in the original 800x450 integer space, scaled by 0.6 only at fill time. `stage.c` loads `.pstg`, replays the environment directives and places `set`/`chk`/`fix` pieces. `nfm_view <pak> data/stage/1 --shot out.bmp` renders the intro stage (490 polys, 0.18 ms/frame on the host; stage 10: 196 pieces, 0.31 ms). **Still missing:** `pile` (3366 directives), walls (`maxr/l/t/b`), mountains, clouds, stars, shadows, wheels, damage/chip effects, road markings for `flx` polys |
+| M3 | `Medium` + `Plane`: camera, sort, per-poly lighting, fog, sky/ground; stage loader (`set`/`chk`/`fix`, then `pile`/mountains/walls) | **Core done, not compared to the original yet.** `runtime/nfm/medium.c` ports `Plane.d`, `ContO.d` and `Medium.d` (sky and ground bands) in the original 800x450 integer space, scaled by 0.6 only at fill time. `stage.c` loads `.pstg`, replays the environment directives and places `set`/`chk`/`fix` pieces, `pile` (procedural rock mounds, `pile.c`, seeded by a `java.util.Random` port verified against the JDK) and the `maxr/l/t/b` walls (`thewall` every 4800 units). `nfm_view <pak> data/stage/1 --shot out.bmp` renders the intro stage (125 pieces, 845 polys, 0.27 ms/frame on the host; stage 10: 390 pieces, 0.33 ms; no directive skipped). **Still missing:** mountains, clouds, stars, shadows, wheels, damage/chip effects, road markings for `flx` polys |
 | M4 | `Mad` + `Wheels` + `Trackers`: physics and collision, car drives | drive stage 1 on the SDL build |
 | M5 | `Control` + PSP input, checkpoints, laps, `Record` | complete a race; replay round-trips |
 | M6 | **Fidelity harness** (replay diff vs original) — before anything cosmetic | see below |
@@ -161,6 +161,7 @@ which is how the trig table below was checked.
   (`int op= double`) in `Mad`.
 - **Deviation from the original:** none deliberate yet, but the fill is centre-sampled
   scanline, not Java2D's `fillPolygon` rule, so edge pixels can differ.
+- **`pile` is `Plane` glass==3**: raw colour (no snap, +0.05 saturation), `gr=-8` (full brightness), drawn `noline`, ground y=250. Its collision trackers are not built yet (needed at M5).
 - **Not ported (cosmetic, `Math.random`-driven):** damage bend/shatter, chips, dust, sparks.
 
 ### Luftrauser bugs to pre-empt (from `luftrauser-port-notes.md`)

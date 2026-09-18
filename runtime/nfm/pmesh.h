@@ -26,7 +26,8 @@ typedef struct {
 #pragma pack(pop)
 
 enum { PMF_DECOR = 1, PMF_SHADOW = 2, PMF_ROAD = 4, PMF_STONECOLD = 64, PMF_NEWSTONE = 128 };
-enum { PM_MAT_NORMAL = 0, PM_MAT_GLASS = 1, PM_MAT_GSHADOW = 2 };
+/* PM_MAT_RAW = Plane glass==3 (procedural piles): colour used as-is, saturation +0.05 */
+enum { PM_MAT_NORMAL = 0, PM_MAT_GLASS = 1, PM_MAT_GSHADOW = 2, PM_MAT_RAW = 3 };
 enum { PM_LIGHT_NONE = 0, PM_LIGHT_FRONT = 1, PM_LIGHT_BACK = 2 };
 enum { PM_PAINT_NONE = 0, PM_PAINT_FIRST = 1, PM_PAINT_SECOND = 2 };
 

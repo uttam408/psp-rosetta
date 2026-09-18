@@ -349,10 +349,16 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
                 c[k] = (m->csky[k] * m->fade[0] * 2 + m->cfade[k] * 3000) / (m->fade[0] * 2 + 3000);
             else if (p->material == PM_MAT_GSHADOW)
                 c[k] = (int)(m->crgrnd[k] * 0.925f);
+            else if (p->material == PM_MAT_RAW)
+                c[k] = oc[k];
             else
                 c[k] = snapc(oc[k], m->snap[k]);
         }
         rgb2hsb(c[0], c[1], c[2], &o->hsb[i * 3]);
+        if (p->material == PM_MAT_RAW && m->trk != 2) {
+            o->hsb[i * 3 + 1] += 0.05f;
+            if (o->hsb[i * 3 + 1] > 1.0f) o->hsb[i * 3 + 1] = 1.0f;
+        }
         calc_deltaf_typ(mesh, p, &o->deltaf[i], &o->typ[i], &o->projf[i]);
     }
 }

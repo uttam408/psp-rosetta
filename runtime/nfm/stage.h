@@ -33,8 +33,10 @@ typedef struct {
     Inst *inst;
     uint32_t n;
     PMesh *meshes;               /* one per distinct piece id */
+    PMesh *piles;                /* one procedural mesh per `pile` directive */
+    uint32_t npiles;
     int nmesh_slots;
-    uint32_t skipped;            /* directives not yet instantiated (pile, walls, unknown ids) */
+    uint32_t skipped;            /* directives not yet instantiated (unknown ids, missing meshes) */
 } Scene;
 
 /* looks pieces up in the pak as mesh/piece/<name>; needs env applied first (snap colours) */

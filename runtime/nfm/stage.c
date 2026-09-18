@@ -4,6 +4,10 @@
 #include <string.h>
 #include "../src/pak.h"
 #include "gen/npieces.h"
+#include "pile.h"
+
+#define WALL_PIECE 29          /* PIECES["thewall"]; GameSparker uses models[85] = 56 + 29 */
+#define WALL_STEP  4800
 
 static int16_t rd16(const uint8_t *p) { int16_t v; memcpy(&v, p, 2); return v; }
 static int32_t rd32(const uint8_t *p) { int32_t v; memcpy(&v, p, 4); return v; }
@@ -70,26 +74,53 @@ void stage_apply_env(const Stage *s, Medium *m)
     m->lightson = s->lightson;
 }
 
+static bool load_piece(Scene *sc, int pi, bool *have, bool *tried)
+{
+    if (!tried[pi]) {
+        tried[pi] = true;
+        char id[96];
+        snprintf(id, sizeof id, "mesh/piece/%s", NPIECE_NAMES[pi]);
+        const PakAsset *a = pak_find(id);
+        have[pi] = a && pmesh_load(&sc->meshes[pi], a->data, a->size);
+        if (!have[pi]) fprintf(stderr, "stage: missing piece %s\n", id);
+    }
+    return have[pi];
+}
+
 bool scene_build(Scene *sc, const Stage *s, Medium *m)
 {
     memset(sc, 0, sizeof *sc);
     sc->meshes = calloc(NPIECE_COUNT, sizeof(PMesh));
     bool have[NPIECE_COUNT] = { false }, tried[NPIECE_COUNT] = { false };
-    sc->inst = calloc(s->nobjs ? s->nobjs : 1, sizeof(Inst));
+    uint32_t nwall = 0, npile = 0;
+    for (uint32_t i = 0; i < s->nobjs; i++) {
+        if (s->objs[i].op == ST_PILE) npile++;
+        else if (s->objs[i].op >= ST_MAXR) nwall += (uint32_t)(s->objs[i].a[0] > 0 ? s->objs[i].a[0] : 0);
+    }
+    sc->piles = calloc(npile ? npile : 1, sizeof(PMesh));
+    sc->inst = calloc(s->nobjs + nwall + 1, sizeof(Inst));
     for (uint32_t i = 0; i < s->nobjs; i++) {
         const StObj *o = &s->objs[i];
-        if (o->op != ST_SET && o->op != ST_CHK && o->op != ST_FIX) { sc->skipped++; continue; }
-        int pi = o->id - NPIECE_BASE;
-        if (pi < 0 || pi >= NPIECE_COUNT) { sc->skipped++; continue; }
-        if (!tried[pi]) {
-            tried[pi] = true;
-            char id[96];
-            snprintf(id, sizeof id, "mesh/piece/%s", NPIECE_NAMES[pi]);
-            const PakAsset *a = pak_find(id);
-            have[pi] = a && pmesh_load(&sc->meshes[pi], a->data, a->size);
-            if (!have[pi]) fprintf(stderr, "stage: missing piece %s\n", id);
+        if (o->op == ST_PILE) {
+            PMesh *pm = &sc->piles[sc->npiles++];
+            pile_build(pm, m, o->a[0], o->a[1], o->a[2]);
+            inst_init(&sc->inst[sc->n], m, pm, o->a[3], 250, o->a[4], 0, -1, -1);
+            sc->inst[sc->n++].noline = true;
+            continue;
         }
-        if (!have[pi]) { sc->skipped++; continue; }
+        if (o->op >= ST_MAXR) {
+            if (!load_piece(sc, WALL_PIECE, have, tried)) { sc->skipped++; continue; }
+            int count = o->a[0], pos = o->a[1], off = o->a[2];
+            static const int rot[4] = { 0, 180, 90, 270 };
+            for (int k = 0; k < count; k++) {
+                bool along_z = o->op == ST_MAXR || o->op == ST_MAXL;
+                int x = along_z ? pos : k * WALL_STEP + off, z = along_z ? k * WALL_STEP + off : pos;
+                inst_init(&sc->inst[sc->n++], m, &sc->meshes[WALL_PIECE], x, 250, z, rot[o->op - ST_MAXR], -1, -1);
+            }
+            continue;
+        }
+        int pi = o->id - NPIECE_BASE;
+        if (pi < 0 || pi >= NPIECE_COUNT || !load_piece(sc, pi, have, tried)) { sc->skipped++; continue; }
         int x = o->a[0], z = o->a[1], rot = o->a[2], y = 250;      /* ground - grat (grat=0 for pieces) */
         if (o->op == ST_CHK && (o->flags & 1)) y = o->a[3];
         if (o->op == ST_FIX) { y = o->a[2]; rot = o->a[3]; }
@@ -101,7 +132,8 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
 void scene_free(Scene *sc)
 {
     for (uint32_t i = 0; i < sc->n; i++) inst_free(&sc->inst[i]);
-    free(sc->inst); free(sc->meshes);
+    for (uint32_t i = 0; i < sc->npiles; i++) pile_free(&sc->piles[i]);
+    free(sc->inst); free(sc->meshes); free(sc->piles);
     memset(sc, 0, sizeof *sc);
 }
 
