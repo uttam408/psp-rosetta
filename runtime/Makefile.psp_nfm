@@ -1,0 +1,20 @@
+# NFM stage viewer -> EBOOT.PBP  (needs pspdev: export PSPDEV=~/pspdev; PATH=$PSPDEV/bin:$PATH)
+#   make -f Makefile.psp_nfm
+# copy build/nfm/assets.pak next to EBOOT.PBP (ms0:/PSP/GAME/NFMVIEW/).
+# Object files live in the source tree; use a separate checkout or `make clean` when
+# switching between this and Makefile.psp.
+
+TARGET = nfm_view_psp
+OBJS = nfm/pmesh.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/main_nfm_psp.o
+
+INCDIR   = src .
+CFLAGS   = -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -ffp-contract=off -fwrapv -MMD -MP
+ASFLAGS  = $(CFLAGS)
+LIBS     = -lpspgum -lpspgu -lm -lpspctrl -lpspdisplay -lpspge -lpspdebug
+
+EXTRA_TARGETS   = EBOOT.PBP
+PSP_EBOOT_TITLE = NFM Viewer
+
+PSPSDK = $(shell psp-config --pspsdk-path)
+include $(PSPSDK)/lib/build.mak
+-include $(OBJS:.o=.d)
