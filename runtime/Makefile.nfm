@@ -3,11 +3,11 @@
 #   make -f Makefile.nfm shot       -> headless screenshot of mesh/car/mustang
 #   make -f Makefile.nfm bench      -> per-frame CPU cost
 CC      ?= cc
-CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter
+CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fwrapv
 SDL_CFLAGS := $(shell sdl2-config --cflags)
 SDL_LIBS   := $(shell sdl2-config --libs)
 
-SRC := nfm/main_nfm.c nfm/pmesh.c nfm/render.c src/pak.c
+SRC := nfm/main_nfm.c nfm/pmesh.c nfm/medium.c src/pak.c
 OUT := build/nfm_view
 PAK := ../build/nfm/assets.pak
 MESH ?= mesh/car/mustang

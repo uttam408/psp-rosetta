@@ -3,21 +3,21 @@
  *   nfm_view <assets.pak> <mesh-id> [--shot out.bmp [yaw_deg]] [--bench] [--list]
  *
  *   mesh-id   pak id, e.g. mesh/car/mustang or mesh/piece/sroad
- *   --shot    render one 480x272 frame headless and save a BMP
- *   --bench   time 300 frames (transform + sort + fill), print ms/frame
+ *   --shot    render one 480x270 frame headless and save a BMP
+ *   --bench   time 300 frames (backdrop + transform + sort + fill), print ms/frame
  *   --list    print every mesh id in the pak
  * Interactive: left/right rotate, up/down zoom, Esc quits.
  */
 #include <SDL.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include "../src/pak.h"
 #include "pmesh.h"
-#include "render.h"
+#include "medium.h"
 
 #define W 480
-#define H 272
+#define H 270
 
 static bool save_bmp(const Frame *f, const char *path)
 {
@@ -29,14 +29,17 @@ static bool save_bmp(const Frame *f, const char *path)
     return rc == 0;
 }
 
-static void frame_for(Frame *f, Camera *cam, const PMesh *m, float yaw, float dist)
+/* The world is fixed and the camera pivot is (cx,cy,cz); with xz=0 an object at
+ * x = m.x + cx, z = m.z + dist sits dead ahead.  Ground is the y = 250 plane. */
+static void render(Medium *m, Inst *o, int yaw, int dist)
 {
-    /* aim at the model origin: camera height h = dist*tan(pitch) */
-    cam->pitch = 0.22f;
-    cam->x = 0; cam->y = -dist * tanf(cam->pitch); cam->z = -dist;
-    cam->yaw = 0;
-    frame_clear(f, 0x9FB8D8);
-    draw_mesh(f, cam, m, 0, 0, 0, yaw, -1, -1);
+    g_polys_in = g_polys_drawn = 0;
+    m->x = 0; m->z = -dist; m->y = -(dist / 4);
+    m->zy = 0;
+    medium_draw_backdrop(m);
+    o->x = m->x + m->cx; o->z = 0; o->y = 250;
+    o->xz = yaw;
+    inst_draw(m, o);
 }
 
 int main(int argc, char **argv)
@@ -55,27 +58,30 @@ int main(int argc, char **argv)
         fprintf(stderr, "no such mesh (or bad .pmesh): %s\n", argv[2]);
         return 1;
     }
-    printf("%s: %u verts, %u polys, %d wheels, %d tracks, max_r %u\n", argv[2],
-           mesh.nverts, mesh.npolys, mesh.nwheels, mesh.ntracks, mesh.max_r);
+    printf("%s: %u verts, %u polys, %d wheels, %d tracks, max_r %u, disline %u\n", argv[2],
+           mesh.nverts, mesh.npolys, mesh.nwheels, mesh.ntracks, mesh.max_r, mesh.disline);
 
     static uint32_t px[W * H];
-    Frame f = { W, H, px, 0.0f };
-    f.focal = 0.6f * 800.0f * 0.5f / tanf(0.5f);   /* placeholder FOV; real value comes from Medium (M3) */
-    Camera cam;
-    float dist = (float)mesh.max_r * 2.2f + 100.0f;
+    Frame f = { W, H, px };
+    Medium med;
+    medium_init(&med, &f);
+    Inst inst;
+    inst_init(&inst, &med, &mesh, 0, 0, 0, 0, -1, -1);
+    int dist = (int)mesh.max_r * 2 + 150;
 
     bool shot = false, bench = false;
     const char *out = NULL;
-    float yaw = 0.6f;
+    int yaw = 35;
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) {
             shot = true; out = argv[++i];
-            if (i + 1 < argc && argv[i + 1][0] != '-') yaw = (float)atof(argv[++i]) * 3.14159265f / 180.0f;
+            if (i + 1 < argc && argv[i + 1][0] != '-') yaw = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--bench") == 0) bench = true;
     }
 
     if (shot) {
-        frame_for(&f, &cam, &mesh, yaw, dist);
+        render(&med, &inst, yaw, dist);   /* warm-up: Plane.av from this frame orders the next */
+        render(&med, &inst, yaw, dist);
         bool ok = save_bmp(&f, out);
         printf("shot: %d/%d polys drawn -> %s (%s)\n", g_polys_drawn, g_polys_in, out, ok ? "ok" : "FAIL");
         return ok ? 0 : 2;
@@ -83,7 +89,7 @@ int main(int argc, char **argv)
     if (bench) {
         double fq = (double)SDL_GetPerformanceFrequency();
         Uint64 t0 = SDL_GetPerformanceCounter();
-        for (int i = 0; i < 300; i++) frame_for(&f, &cam, &mesh, yaw + i * 0.05f, dist);
+        for (int i = 0; i < 300; i++) render(&med, &inst, (yaw + i * 3) % 360, dist);
         Uint64 t1 = SDL_GetPerformanceCounter();
         printf("bench: %.3f ms/frame, %d polys/frame\n", (t1 - t0) * 1000.0 / fq / 300, g_polys_drawn);
         return 0;
@@ -100,11 +106,11 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&ev))
             if (ev.type == SDL_QUIT || (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE)) run = false;
         const Uint8 *k = SDL_GetKeyboardState(NULL);
-        if (k[SDL_SCANCODE_LEFT])  yaw -= 0.04f;
-        if (k[SDL_SCANCODE_RIGHT]) yaw += 0.04f;
-        if (k[SDL_SCANCODE_UP])    dist *= 0.98f;
-        if (k[SDL_SCANCODE_DOWN])  dist *= 1.02f;
-        frame_for(&f, &cam, &mesh, yaw, dist);
+        if (k[SDL_SCANCODE_LEFT])  yaw = (yaw + 359) % 360;
+        if (k[SDL_SCANCODE_RIGHT]) yaw = (yaw + 1) % 360;
+        if (k[SDL_SCANCODE_UP]   && dist > 200) dist -= dist / 50 + 1;
+        if (k[SDL_SCANCODE_DOWN])  dist += dist / 50 + 1;
+        render(&med, &inst, yaw, dist);
         SDL_UpdateTexture(tex, NULL, px, W * 4);
         SDL_RenderCopy(r, tex, NULL, NULL);
         SDL_RenderPresent(r);
