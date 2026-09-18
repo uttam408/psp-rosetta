@@ -20,6 +20,15 @@ LIBS     = -lpspgum -lpspgu -lm -lpspaudiolib -lpspaudio -lpspctrl -lpspdisplay 
 
 EXTRA_TARGETS   = EBOOT.PBP
 PSP_EBOOT_TITLE = Luftrauser
+# icon0.png/pic1.png are generated (tools/make_psp_icon.py) from the game's own
+# title art, not committed (same reasoning as sources/ and assets.pak — no game
+# art in this repo). Falls back to no icon if they haven't been generated yet.
+ifneq (,$(wildcard icon0.png))
+PSP_EBOOT_ICON  = icon0.png
+endif
+ifneq (,$(wildcard pic1.png))
+PSP_EBOOT_PIC1  = pic1.png
+endif
 
 PSPSDK = $(shell psp-config --pspsdk-path)
 

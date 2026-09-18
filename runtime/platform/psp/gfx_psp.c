@@ -189,31 +189,20 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
         4, 0, v);
 }
 
-/* one GU_REPEAT quad for the water/space bands */
+/* Per-tile draws through the normal (CLAMP-sampled) gfx_draw path — NOT a
+ * single GU_REPEAT quad. A swizzled texture sampled with GU_REPEAT does not
+ * wrap correctly on the PSP GU (the swizzle block layout breaks the simple
+ * modulo addressing REPEAT relies on): the water/space bands, both swizzled,
+ * rendered corrupted/incomplete this way, which is why sinking ships and the
+ * surfacing submarine appeared to float in front of the water instead of
+ * being masked by it. Water/space are only 2 entities, so the extra draw
+ * calls here are not a real perf concern. */
 void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
 {
     if (!t) return;
-    bind(t);
-    sceGuTexWrap(GU_REPEAT, GU_REPEAT);
-
-    sceGumMatrixMode(GU_MODEL);
-    sceGumLoadIdentity();
-
-    float x0 = (float)(x - fp_camera.x), y0 = (float)(y - fp_camera.y);
-    float x1 = x0 + span_w, y1 = y0 + span_h;
-    float u1 = (float)span_w / t->tw, v1 = (float)span_h / t->th;
-    unsigned int col = 0xFFFFFFFFu;
-
-    Vtx *v = sceGuGetMemory(4 * sizeof(Vtx));
-    v[0] = (Vtx){ 0,  0,  col, x0, y0, 0 };
-    v[1] = (Vtx){ 0,  v1, col, x0, y1, 0 };
-    v[2] = (Vtx){ u1, 0,  col, x1, y0, 0 };
-    v[3] = (Vtx){ u1, v1, col, x1, y1, 0 };
-    sceGumDrawArray(GU_TRIANGLE_STRIP,
-        GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
-        4, 0, v);
-
-    sceGuTexWrap(GU_CLAMP, GU_CLAMP);
+    for (int ty = 0; ty < span_h; ty += t->th)
+        for (int tx = 0; tx < span_w; tx += t->tw)
+            gfx_draw(t, x + tx, y + ty, 0, 0, 0, 1, 1, 0xFFFFFF, 0, 0, t->tw, t->th);
 }
 
 bool gfx_save_bmp(const char *path) { (void)path; return false; }

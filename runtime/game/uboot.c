@@ -32,7 +32,10 @@ static void uboot_update(Entity *e)
             snd_music("audio/worlds/game/music", 0.5f);
             g_game.music_started = true;
         }
-        player_spawn(e->x, e->y);
+        /* the hull sprite's conning tower (launch hatch) sits ~4px right of
+           its geometric bounding-box center, so spawning at e->x,e->y (the
+           render origin) puts the plane visibly off the tower. */
+        player_spawn(e->x + 4, e->y);
         u->launched = true;
         u->t_dive = SPEC_UBOOT_LAUNCH_DIVE_AFTER;
     }
