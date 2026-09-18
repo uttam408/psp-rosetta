@@ -96,12 +96,12 @@ void gfx_frame_begin(uint32_t rgb)
     g_bound = NULL;
 }
 
-/* Cap render rate at ~45fps (< the PSP LCD's 60Hz) to save battery: fewer
+/* Cap render rate (60 = one vblank per frame; lower it to save battery): fewer
  * display swaps and less GU work per second, at a frame rate still well above
  * the game's own fixed 30Hz sim. Achieved by waiting a fractional number of
  * vblanks per frame (60/45 = 1.333) via an accumulator, so the average is
  * exact rather than a rough over/under approximation. */
-#define TARGET_FPS   45.0
+#define TARGET_FPS   60.0
 #define DISPLAY_HZ   60.0
 
 void gfx_frame_end(void)
