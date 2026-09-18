@@ -56,6 +56,8 @@ int main(void)
     const double DT_US = 1000000.0 / (double)SPEC_ENGINE_FPS;
     double accum = 0;
     unsigned long long prev = sceKernelGetSystemTimeWide();
+    unsigned long long prev_render = prev;
+    float fps_ema = (float)SPEC_ENGINE_FPS;
 
     while (g_running) {
         unsigned long long now = sceKernelGetSystemTimeWide();
@@ -72,6 +74,16 @@ int main(void)
             steps++;
         }
         if (steps == SPEC_ENGINE_MAX_FRAME_SKIP) accum = 0;
+
+        /* real (render) fps — this is what stutter shows up as, not sim rate */
+        unsigned long long rnow = sceKernelGetSystemTimeWide();
+        double rdt = (double)(rnow - prev_render);
+        prev_render = rnow;
+        if (rdt > 1.0) {
+            float inst = (float)(1000000.0 / rdt);
+            fps_ema += (inst - fps_ema) * 0.1f;
+            game_set_fps(fps_ema);
+        }
 
         game_draw();
     }

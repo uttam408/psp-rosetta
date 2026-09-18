@@ -166,16 +166,14 @@ static void update_normal(Player *p)
     /* 12. damage smoke + repair while not firing (Player.as:314-326) */
     if (p->health > 0 && p->health < SPEC_PLAYER_INIT_HEALTH) {
         if ((double)fp_rand(10) > p->health)
-            fx_part("image/interaction/fx/smoke/smoke", e->x, e->y,
-                    fp_rand(360), fp_random() * ((10.0 - p->health) / 4.0), 40);
+            fx_smoke(e->x, e->y, fp_rand(360), fp_random() * ((10.0 - p->health) / 4.0));
         if (!in_down(ACT_FIRE))
             p->health += SPEC_PLAYER_DAMAGE_REGEN_PER_FRAME;
     }
 
     /* 13. death spiral (Player.as:327-361) */
     if (p->health <= 0) {
-        fx_part("image/interaction/fx/smoke/smoke", e->x, e->y,
-                fp_rand(360), fp_random() * 2.5, 40);
+        fx_smoke(e->x, e->y, fp_rand(360), fp_random() * 2.5);
         if (fp_rand(30) < 1) fx_anim("image/interaction/explosion/explosion", e->x, e->y, 0.5);
         if (fp_rand(10) < 1) fx_anim("image/interaction/smallexplosion/explosion", e->x, e->y, 0.5);
         if (e->y > water_y()) {

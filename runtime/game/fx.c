@@ -65,6 +65,8 @@ static void part_update(Entity *e)
 {
     Part *p = e->user;
     ent_update(e);
+    if (fp_rand(15) < 1)      /* debris occasionally trails smoke (the Part FX classes) */
+        fx_smoke(e->x, e->y, fp_rand(360), fp_random() * 2.0);
     if (--p->life <= 0) world_remove(e->world, e);
 }
 
@@ -135,4 +137,55 @@ Entity *fx_blurb(int amount, double x, double y)
     b->life = 60;
     b->amount = amount;
     return world_add(&g_game.world, &b->e);
+}
+
+/* ----------------------------------------------------------------- fx_smoke */
+/* FX/Smoke.as: 16x16, 3 frames @0.2, friction=0.1 (no gravity), drifts with
+ * whatever motionAdd gave it, self-removes when the animation completes. */
+typedef struct {
+    Entity e;
+    const PakAsset *a;
+    GfxTex *t;
+    double frame;
+} Smoke;
+
+POOL(smoke_pool, Smoke, 96)
+static void smoke_recycle(Entity *e) { smoke_pool_put(e->user); }
+
+static void smoke_update(Entity *e)
+{
+    Smoke *s = e->user;
+    ent_update(e);
+    s->frame += 0.2;
+    if (s->a && s->frame >= s->a->nframes) world_remove(e->world, e);
+}
+
+static void smoke_render(Entity *e)
+{
+    Smoke *s = e->user;
+    if (!s->t || !s->a || s->a->nframes == 0) return;
+    int i = (int)s->frame;
+    if (i >= s->a->nframes) i = s->a->nframes - 1;
+    PakRect r = s->a->frames[i];
+    gfx_draw(s->t, e->x, e->y, 0, r.w / 2.0, r.h / 2.0, 1, 1, 0xFFFFFF,
+             r.x, r.y, r.w, r.h);
+}
+
+Entity *fx_smoke(double x, double y, double angle, double speed)
+{
+    Smoke *s = smoke_pool_get();
+    if (!s) return NULL;
+    ent_init(&s->e, ETYPE_FX);
+    s->e.user = s;
+    s->e.update = smoke_update;
+    s->e.render = smoke_render;
+    s->e.recycle = smoke_recycle;
+    s->e.layer = LAYER_PART;
+    s->e.collidable = false;
+    s->e.friction = 0.1;
+    s->e.x = x; s->e.y = y;
+    s->a = pak_find("image/interaction/fx/smoke/smoke");
+    s->t = tex("image/interaction/fx/smoke/smoke");
+    ent_motion_add(&s->e, angle, speed);
+    return world_add(&g_game.world, &s->e);
 }

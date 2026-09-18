@@ -42,6 +42,8 @@ int main(int argc, char **argv)
     const double DT = 1.0 / (double)SPEC_ENGINE_FPS;
     const double FREQ = (double)SDL_GetPerformanceFrequency();
     uint64_t prev = SDL_GetPerformanceCounter();
+    uint64_t prev_render = prev;
+    float fps_ema = (float)SPEC_ENGINE_FPS;
     double accum = 0;
     bool running = true;
 
@@ -74,6 +76,15 @@ int main(int argc, char **argv)
             steps++;
         }
         if (steps == SPEC_ENGINE_MAX_FRAME_SKIP) accum = 0;
+
+        uint64_t rnow = SDL_GetPerformanceCounter();
+        double rdt = (double)(rnow - prev_render) / FREQ;
+        prev_render = rnow;
+        if (rdt > 0.0001) {
+            float inst = (float)(1.0 / rdt);
+            fps_ema += (inst - fps_ema) * 0.1f;
+            game_set_fps(fps_ema);
+        }
 
         game_draw();
     }

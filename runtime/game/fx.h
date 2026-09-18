@@ -14,4 +14,8 @@ Entity *fx_part(const char *tex_id, double x, double y,
 /* rising "+N" kill marker. TODO: real text — currently a small tinted quad. */
 Entity *fx_blurb(int amount, double x, double y);
 
+/* drifting smoke puff: animates its 3 frames, friction-only motion, no gravity.
+ * Spawned by damaged/dying Player and (occasionally) by fx_part debris. */
+Entity *fx_smoke(double x, double y, double angle, double speed);
+
 #endif

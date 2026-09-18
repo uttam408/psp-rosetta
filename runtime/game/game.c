@@ -11,6 +11,9 @@
 #define HUD_RGB   0x8D420D   /* Game.as HUD colour */
 #define BLURB_RGB 0x610C1D
 
+static float g_fps;
+void game_set_fps(float fps) { g_fps = fps; }
+
 /* --- high score (SharedObject "Luftrauser" / "Highscore" -> a 4-byte file) -- */
 static int hiscore_load(void)
 {
@@ -109,12 +112,22 @@ static void spawn_more_enemies(void)
 
 void game_tick(void)
 {
+    if (in_pressed(ACT_START) && !g_game.game_over)
+        g_game.paused = !g_game.paused;
+    if (g_game.paused) return;                     /* freeze the sim entirely */
+
     world_update(&g_game.world);
 
     Entity *pl = world_first_type(&g_game.world, ETYPE_PLAYER);
 
     if (g_game.game_over) {
-        if (in_pressed(ACT_FIRE)) { snd_music_stop(); game_start(); }
+        /* accept Cross (PSP "X button") or Fire — the on-screen "X TO RESTART"
+           refers to the original keyboard binding, not the PSP Cross button,
+           so take either. */
+        if (in_pressed(ACT_FIRE) || in_pressed(ACT_THRUST)) {
+            snd_music_stop();
+            game_start();
+        }
         return;
     }
 
@@ -139,6 +152,9 @@ static void hud(void)
     char buf[96];
     Entity *pl = world_first_type(&g_game.world, ETYPE_PLAYER);
     bool attract = world_count_type(&g_game.world, ETYPE_UBOOT) > 0 && !pl;
+
+    snprintf(buf, sizeof buf, "%d FPS", (int)(g_fps + 0.5f));
+    text_draw(buf, fp_width - 8, 8, HUD_RGB, TEXT_RIGHT);
 
     if (g_game.game_over) {
         double cx = fp_half_width, cy = fp_half_height - 40;
@@ -168,6 +184,10 @@ static void hud(void)
         snprintf(buf, sizeof buf, "SCORE %d", g_game.game_score);
         text_draw(buf, 8, 8, HUD_RGB, TEXT_LEFT);
     }
+
+    if (g_game.paused)
+        text_draw("PAUSED\nSTART TO RESUME", fp_half_width, fp_half_height - 8,
+                  HUD_RGB, TEXT_CENTER);
 }
 
 void game_draw(void)
