@@ -74,7 +74,7 @@ void game_start(void)
 /* Game.as:372-377 — 2 Brits + start the spawn loop */
 void game_begin_combat(void)
 {
-    double w = fp_width;
+    real w = fp_width;
     for (int i = 0; i < SPEC_SPAWN_FIRST_BRITS; i++)
         brit_spawn(fp_choose2(fp_camera.x - SPEC_SPAWN_SPAWN_X_OFFSCREEN,
                               fp_camera.x + w + SPEC_SPAWN_SPAWN_X_OFFSCREEN),
@@ -87,14 +87,14 @@ void game_begin_combat(void)
 static void spawn_more_enemies(void)
 {
     g_game.t_spawn = 30 + (int)fp_rand(60);            /* re-arm 30-89 frames  */
-    double sx = fp_choose2(fp_camera.x - 500, fp_camera.x + fp_width + 500);
-    double sy = 100 + fp_rand(500);
+    real sx = fp_choose2(fp_camera.x - 500, fp_camera.x + fp_width + 500);
+    real sy = 100 + fp_rand(500);
     g_game.game_hard += SPEC_DIFFICULTY_GAMEHARD_PER_TICK;
 
     int live = world_count_type(&g_game.world, ETYPE_ENEMY);
     if (live >= g_game.game_hard || live >= SPEC_DIFFICULTY_ENEMY_COUNT_CAP) return;
 
-    double gh = g_game.game_hard;
+    real gh = g_game.game_hard;
     int cls;
     if (gh < 3)       cls = 0;
     else if (gh < 7)  { const int c[] = {0, 0, 1};             cls = c[fp_rand(3)]; }
@@ -162,7 +162,7 @@ static void hud(void)
     text_draw(buf, fp_width - 8, 8, HUD_RGB, TEXT_RIGHT);
 
     if (g_game.game_over) {
-        double cx = fp_half_width, cy = fp_half_height - 40;
+        real cx = fp_half_width, cy = fp_half_height - 40;
         text_draw("GAME OVER", cx, cy, HUD_RGB, TEXT_CENTER);
         snprintf(buf, sizeof buf,
                  "KILLS %d\nPLANES %d   JETS %d\nBOAT %d   SHIP %d",
@@ -177,7 +177,7 @@ static void hud(void)
     }
 
     if (attract) {
-        double cx = fp_half_width;
+        real cx = fp_half_width;
         text_draw("PRESS UP TO LAUNCH", cx, 70, HUD_RGB, TEXT_CENTER);
         text_draw("ARROWS + X    RELEASE X TO REPAIR", cx, 86, BLURB_RGB, TEXT_CENTER);
         snprintf(buf, sizeof buf, "BEST %d", g_game.high_score);

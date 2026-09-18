@@ -32,6 +32,8 @@ struct GfxTex {
 typedef struct { float u, v; unsigned int color; float x, y, z; } Vtx;
 
 static GfxTex *g_bound;     /* currently-bound texture (bind cache) */
+int gfx_dbg_nocap, gfx_dbg_skipdraw;
+unsigned long long gfx_dbg_sync_us;
 static void batch_flush(void);
 static bool g_model_ident;  /* GU model matrix is known to be identity */
 
@@ -106,9 +108,12 @@ void gfx_frame_end(void)
 {
     batch_flush();
     sceGuFinish();
+    unsigned long long s0 = sceKernelGetSystemTimeWide();
     sceGuSync(0, 0);
+    gfx_dbg_sync_us += sceKernelGetSystemTimeWide() - s0;
+    if (gfx_dbg_nocap) { sceGuSwapBuffers(); return; }
 
-    static double vblank_acc = 0.0;
+    static real vblank_acc = 0.0;
     vblank_acc += DISPLAY_HZ / TARGET_FPS;
     int waits = (int)vblank_acc;
     if (waits < 1) waits = 1;
@@ -193,11 +198,11 @@ static float rot_sign(void)
     return sign;
 }
 
-void gfx_draw(GfxTex *t, double x, double y, double angle,
-              double ox, double oy, double sx, double sy, uint32_t tint,
+void gfx_draw(GfxTex *t, real x, real y, real angle,
+              real ox, real oy, real sx, real sy, uint32_t tint,
               int fx, int fy, int fw, int fh)
 {
-    if (!t) return;
+    if (!t || gfx_dbg_skipdraw) return;
 
     float screenx = (float)(x - fp_camera.x);
     float screeny = (float)(y - fp_camera.y);
@@ -208,7 +213,7 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
      * sprites, never a visible one. This is the fix for the 20+-enemy stutter:
      * enemies/bullets/FX spawn and travel well outside the 480x272 view. */
     {
-        float dsx = (float)fabs(sx), dsy = (float)fabs(sy);
+        float dsx = (float)rfabs(sx), dsy = (float)rfabs(sy);
         if (angle == 0.0) {
             /* exact rect test for unrotated sprites */
             float x0 = screenx - (float)ox * dsx, y0 = screeny - (float)oy * dsy;
@@ -225,7 +230,7 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
 
     bind(t);
 
-    float dsx = (float)fabs(sx), dsy = (float)fabs(sy);
+    float dsx = (float)rfabs(sx), dsy = (float)rfabs(sy);
     float l = (float)-ox, tp = (float)-oy;
     float r = (float)(fw - ox), b = (float)(fh - oy);
     float u0 = (float)fx / t->tw, v0 = (float)fy / t->th;
@@ -284,7 +289,7 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
  * surfacing submarine appeared to float in front of the water instead of
  * being masked by it. Water/space are only 2 entities, so the extra draw
  * calls here are not a real perf concern. */
-void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
+void gfx_draw_tiled(GfxTex *t, real x, real y, int span_w, int span_h)
 {
     if (!t) return;
     /* whole band off-screen vertically -> nothing to submit; otherwise only
@@ -299,10 +304,10 @@ void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
 }
 
 /* sceGuScissor's last two args are the (exclusive) bottom-right corner. */
-void gfx_clip_below(double world_y)
+void gfx_clip_below(real world_y)
 {
     batch_flush();
-    int sy = (int)floor(world_y - fp_camera.y);
+    int sy = (int)rfloor(world_y - fp_camera.y);
     if (sy < 0) sy = 0;
     if (sy > SCR_H) sy = SCR_H;
     sceGuScissor(0, 0, SCR_W, sy);

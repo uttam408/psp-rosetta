@@ -88,7 +88,7 @@ Entity *uboot_spawn(void)
     u->e.layer = LAYER_ENEMY;
 
     const PakAsset *a = pak_find("image/interaction/uboot/uboot");
-    double hh = (a && a->nframes) ? a->frames[0].h / 2.0 : 24;   /* content, not POT-padded */
+    real hh = (a && a->nframes) ? a->frames[0].h / 2.0 : 24;   /* content, not POT-padded */
     u->e.x = SPEC_UBOOT_SPAWN_X;
     u->e.y = SPEC_WORLD_WATER_Y + hh;           /* just below the water line */
     ent_set_vspeed(&u->e, SPEC_UBOOT_RISE_VSPEED);

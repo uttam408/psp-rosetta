@@ -9,9 +9,9 @@
 
 typedef struct {
     Enemy  en;
-    double maxspeed, minspeed, reaction, turn;
+    real maxspeed, minspeed, reaction, turn;
     int    t_shoot, t_ai;
-    double body_angle, wings_scale_y;
+    real body_angle, wings_scale_y;
     GfxTex *body, *wings;
 } Brit;
 
@@ -35,7 +35,7 @@ static void brit_perform_ai(Brit *b)
     Entity *e = &b->en.e;
     if (pl) {
         b->maxspeed = 4 + fp_rand(2);
-        double dist = fp_distance(e->x, e->y, pl->x, pl->y);
+        real dist = fp_distance(e->x, e->y, pl->x, pl->y);
         if (dist > 200) {
             b->maxspeed += 2;
             b->minspeed = 2 + fp_rand(2);
@@ -71,7 +71,7 @@ static void brit_update(Entity *e)
 
     e->direction += b->turn;
 
-    b->wings_scale_y = sin(FP_RAD * b->body_angle);
+    b->wings_scale_y = rsin(FP_RAD * b->body_angle);
 
     /* altitude guards */
     if (e->y > SPEC_WORLD_WATER_Y - 100) ent_set_vspeed(e, ent_vspeed(e) - 0.1);
@@ -98,7 +98,7 @@ static void brit_render(Entity *e)
                  0xFFFFFF, 0, 0, 16, 16);
 }
 
-Entity *brit_spawn(double x, double y)
+Entity *brit_spawn(real x, real y)
 {
     Brit *b = brit_pool_get();
     if (!b) return NULL;

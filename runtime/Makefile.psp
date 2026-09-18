@@ -13,7 +13,7 @@ OBJS = \
   platform/psp/main_psp.o
 
 INCDIR   = src .
-CFLAGS   = -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -MMD -MP
+CFLAGS   = -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -fsingle-precision-constant -MMD -MP
 ASFLAGS  = $(CFLAGS)
 LDFLAGS  =
 LIBS     = -lpspgum -lpspgu -lm -lpspaudiolib -lpspaudio -lpspctrl -lpspdisplay -lpspge -lpspdebug

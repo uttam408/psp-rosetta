@@ -4,7 +4,7 @@
 #include "game.h"
 #include "pool.h"
 
-typedef struct { Entity e; GfxTex *t; double band_y; } Band;
+typedef struct { Entity e; GfxTex *t; real band_y; } Band;
 
 POOL(band_pool, Band, 4)
 static void band_recycle(Entity *e) { band_pool_put(e->user); }
@@ -14,11 +14,11 @@ static void band_render(Entity *e)
     Band *b = e->user;
     if (!b->t) return;
     /* cover the visible width plus a tile of slop on each side */
-    double x = fp_camera.x - 64;
+    real x = fp_camera.x - 64;
     gfx_draw_tiled(b->t, x, b->band_y, fp_width + 128, 240);
 }
 
-static Entity *band_spawn(EntityType type, const char *tex_id, double band_y, int layer)
+static Entity *band_spawn(EntityType type, const char *tex_id, real band_y, int layer)
 {
     Band *b = band_pool_get();
     if (!b) return NULL;

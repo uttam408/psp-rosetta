@@ -55,10 +55,10 @@ void gfx_frame_end(void)
 {
     static Uint64 last = 0;
     Uint64 now = SDL_GetPerformanceCounter();
-    double freq = (double)SDL_GetPerformanceFrequency();
-    double target = freq / TARGET_FPS;
+    real freq = (real)SDL_GetPerformanceFrequency();
+    real target = freq / TARGET_FPS;
     if (last != 0) {
-        double elapsed = (double)(now - last);
+        real elapsed = (real)(now - last);
         if (elapsed < target)
             SDL_Delay((Uint32)((target - elapsed) * 1000.0 / freq));
     }
@@ -110,19 +110,19 @@ GfxTex *gfx_tex_from_pixels(const uint16_t *px, int w, int h)
     return t;
 }
 
-void gfx_draw(GfxTex *t, double x, double y, double angle,
-              double ox, double oy, double sx, double sy, uint32_t tint,
+void gfx_draw(GfxTex *t, real x, real y, real angle,
+              real ox, real oy, real sx, real sy, uint32_t tint,
               int fx, int fy, int fw, int fh)
 {
     if (!t) return;
-    double dsx = fabs(sx), dsy = fabs(sy);
-    double screenx = x - fp_camera.x;
-    double screeny = y - fp_camera.y;
+    real dsx = rfabs(sx), dsy = rfabs(sy);
+    real screenx = x - fp_camera.x;
+    real screeny = y - fp_camera.y;
 
     /* frustum cull: skip fully off-screen sprites before touching the GPU.
      * margin is deliberately generous (covers any origin offset + rotation)
      * so this can only ever skip things that are truly invisible. */
-    double margin = (fw + fh) * (dsx > dsy ? dsx : dsy) + 8;
+    real margin = (fw + fh) * (dsx > dsy ? dsx : dsy) + 8;
     if (screenx + margin < 0 || screenx - margin > g_lw ||
         screeny + margin < 0 || screeny - margin > g_lh)
         return;
@@ -141,17 +141,17 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
                       (SDL_RendererFlip)flip);
 }
 
-void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
+void gfx_draw_tiled(GfxTex *t, real x, real y, int span_w, int span_h)
 {
     if (!t) return;
-    for (double ty = y; ty < y + span_h; ty += t->h)
-        for (double tx = x; tx < x + span_w; tx += t->w)
+    for (real ty = y; ty < y + span_h; ty += t->h)
+        for (real tx = x; tx < x + span_w; tx += t->w)
             gfx_draw(t, tx, ty, 0, 0, 0, 1, 1, 0xFFFFFF, 0, 0, t->w, t->h);
 }
 
-void gfx_clip_below(double world_y)
+void gfx_clip_below(real world_y)
 {
-    int sy = (int)floor(world_y - fp_camera.y);
+    int sy = (int)rfloor(world_y - fp_camera.y);
     if (sy < 0) sy = 0;
     if (sy > g_lh) sy = g_lh;
     SDL_Rect r = { 0, 0, g_lw, sy };

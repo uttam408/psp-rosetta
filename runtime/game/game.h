@@ -26,7 +26,7 @@ typedef struct Game {
     World  world;
     int    game_score;
     int    kills[4];       /* brit, jet, bootje, boot */
-    double game_hard;
+    real game_hard;
     int    high_score;
 
     Entity *water;         /* world-space y == SPEC_WORLD_WATER_Y band */
@@ -45,21 +45,21 @@ extern Game g_game;
 GfxTex *tex(const char *id);
 
 /* factories — each allocates, wires update/render, world_add's, returns the Entity */
-Entity *player_spawn(double x, double y);
+Entity *player_spawn(real x, real y);
 Entity *uboot_spawn(void);
 Entity *backdrop_spawn_water(void);
 Entity *backdrop_spawn_space(void);
-Entity *bullet_spawn(double x, double y, double angle);
-Entity *ebullet_spawn(double x, double y, double angle, double speed);
-Entity *brit_spawn(double x, double y);
-Entity *jet_spawn(double x, double y);
-Entity *boot_spawn(double x);      /* battleship */
-Entity *bootje_spawn(double x);    /* boat */
+Entity *bullet_spawn(real x, real y, real angle);
+Entity *ebullet_spawn(real x, real y, real angle, real speed);
+Entity *brit_spawn(real x, real y);
+Entity *jet_spawn(real x, real y);
+Entity *boot_spawn(real x);      /* battleship */
+Entity *bootje_spawn(real x);    /* boat */
 Entity *cloud_spawn(void);
 
 void player_getdamage(Entity *player, int amount);   /* Player.as:380 getDamage */
-void player_health_delta(Entity *player, double d);  /* raw, no shake */
-double player_health(Entity *player);
+void player_health_delta(Entity *player, real d);  /* raw, no shake */
+real player_health(Entity *player);
 void game_begin_combat(void);   /* UBoot.removeThis -> spawnEnemies + start loop */
 
 void game_start(void);   /* build the attract-mode world */

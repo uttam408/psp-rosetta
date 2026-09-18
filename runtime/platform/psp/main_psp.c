@@ -4,12 +4,15 @@
 #include <pspdebug.h>
 #include <psputils.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "../../src/fp.h"
 #include "../../src/pak.h"
 #include "../../src/audio.h"
 #include "../../src/gfx.h"
 #include "../../game/game.h"
+#include "../../game/enemy.h"
+#include "../../game/fx.h"
 
 PSP_MODULE_INFO("Luftrauser", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -35,6 +38,75 @@ static void setup_callbacks(void)
     if (th >= 0) sceKernelStartThread(th, 0, 0);
 }
 
+
+extern int gfx_dbg_nocap, gfx_dbg_skipdraw;
+extern unsigned long long gfx_dbg_sync_us;
+
+/* Debug bench: if "bench.on" exists next to the EBOOT, stuff ~270 entities and
+ * log timings for several configurations to bench.txt, then exit. */
+static void run_bench(void)
+{
+    FILE *out = fopen("bench.txt", "w");
+    if (!out) return;
+    for (int i = 0; i < 100; i++) game_tick();
+    fprintf(out, "baseline ents=%d\n", world_count(&g_game.world));
+    static const struct { const char *name; int stuff, tick, skipdraw; } cfg[] = {
+        {"base  9 ents  tick+draw", 0, 1, 0},
+        {"270 ents  tick+draw   ", 1, 1, 0},
+        {"270 ents  draw only   ", 0, 0, 0},
+        {"270 ents  tick only   ", 0, 1, 1},
+        {"270 ents  draw calls off", 0, 0, 1},
+    };
+    {
+        game_start();
+        for (int i = 0; i < 100; i++) game_tick();
+        for (int i = 0; i < 60; i++) brit_spawn(100 + i, 100);
+        game_tick();
+        volatile float fa = 0.7f, fr = 0; volatile double da = 0.7, dr = 0;
+        const int M = 2000;
+        unsigned long long t0;
+#define TIME(label, expr) t0 = sceKernelGetSystemTimeWide(); for (int i = 0; i < M; i++) { expr; } \
+        fprintf(out, "%-22s %8.3f us/call\n", label, (sceKernelGetSystemTimeWide() - t0) / (double)M);
+        TIME("atan2f", fr = atan2f(fa + i * 1e-4f, 0.3f))
+        TIME("sinf", fr = sinf(fa + i * 1e-4f))
+        TIME("cosf", fr = cosf(fa + i * 1e-4f))
+        TIME("sqrtf", fr = sqrtf(fa + i * 1e-4f))
+        TIME("sin (double)", dr = sin(da + i * 1e-4))
+        TIME("atan2 (double)", dr = atan2(da + i * 1e-4, 0.3))
+        TIME("double mul+add", dr = da * 1.0001 + i)
+        TIME("fp_random", dr = fp_random())
+        TIME("world_first_type(PL)", (void)world_first_type(&g_game.world, ETYPE_PLAYER))
+        TIME("fp_angle", dr = fp_angle(1, 2, 3 + i * 1e-3, 4))
+        fprintf(out, "ents=%d\n", world_count(&g_game.world));
+        fflush(out);
+    }
+    gfx_dbg_nocap = 1;
+    static const char *names[] = {"brit x60", "jet x30", "ebullet x90", "smoke x90", "none"};
+    for (int c = 0; c < 5; c++) {
+        game_start();
+        for (int i = 0; i < 100; i++) game_tick();
+        int base = world_count(&g_game.world);
+        if (c == 0) for (int i = 0; i < 60; i++) brit_spawn(fp_camera.x + 40 + (i % 12) * 30, fp_camera.y + 20 + (i / 12) * 30);
+        if (c == 1) for (int i = 0; i < 30; i++) jet_spawn(fp_camera.x + 40 + (i % 10) * 40, fp_camera.y + 150 + (i / 10) * 20);
+        if (c == 2) for (int i = 0; i < 90; i++) ebullet_spawn(fp_camera.x + 20 + (i % 30) * 15, fp_camera.y + 60 + (i / 30) * 40, i * 12, 0.5);
+        if (c == 3) for (int i = 0; i < 90; i++) fx_smoke(fp_camera.x + 20 + (i % 30) * 15, fp_camera.y + 100 + (i / 30) * 30, i * 7, 0.3);
+        game_tick();
+        int n0 = world_count(&g_game.world);
+        const int N = 20;
+        unsigned long long tt = 0;
+        for (int i = 0; i < N; i++) {
+            unsigned long long a = sceKernelGetSystemTimeWide();
+            game_tick();
+            tt += sceKernelGetSystemTimeWide() - a;
+        }
+        fprintf(out, "%-12s base=%d ents=%d->%d | tick %8.3f ms\n", names[c], base, n0,
+                world_count(&g_game.world), tt / 1000.0 / N);
+        fflush(out);
+    }
+    fprintf(out, "done\n");
+    fclose(out);
+}
+
 int main(void)
 {
     setup_callbacks();
@@ -52,6 +124,10 @@ int main(void)
     snd_init();
     psp_input_init();
     game_start();
+    {
+        FILE *f = fopen("bench.on", "r");
+        if (f) { fclose(f); run_bench(); sceKernelExitGame(); return 0; }
+    }
 
     const double DT_US = 1000000.0 / (double)SPEC_ENGINE_FPS;
     double accum = 0;

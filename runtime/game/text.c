@@ -43,14 +43,14 @@ int text_width(const char *s)
     return best * GLYPH;
 }
 
-void text_draw(const char *s, double sx, double sy, uint32_t rgb, int align)
+void text_draw(const char *s, real sx, real sy, uint32_t rgb, int align)
 {
     if (!g_font) return;
-    double lx = sx, ly = sy;
+    real lx = sx, ly = sy;
     const char *p = s;
     while (*p) {
         int n = line_len(p);
-        double x = lx;
+        real x = lx;
         if (align == TEXT_CENTER) x = lx - n * GLYPH / 2.0;
         else if (align == TEXT_RIGHT) x = lx - n * GLYPH;
         for (int i = 0; i < n; i++) {
