@@ -47,6 +47,15 @@ static void step(const char *fmt, ...)
     va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
     fputc('\n', f); fclose(f);
 }
+/* overwrite one fixed-size marker per call; after a crash it names the last thing started */
+static FILE *g_trace_f;
+static void trace_marker(const char *tag, int a, int b)
+{
+    fseek(g_trace_f, 0, SEEK_SET);
+    fprintf(g_trace_f, "%-14s %6d %6d\n", tag, a, b);
+    fflush(g_trace_f);
+}
+
 static uint32_t g_px[W * H];
 static char g_names[64][96];
 static int g_nstages;
@@ -156,9 +165,9 @@ int main(void)
 
         g_polys_in = g_polys_drawn = 0;
         unsigned long long t_a = sceKernelGetSystemTimeWide();
-        if (frames == 0 && first) step("first draw");
+        if (first) { g_trace_f = fopen("nfm_trace.txt", "w"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
         scene_draw(&med, &sc);
-        if (first) { step("first draw done"); }
+        if (first) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         unsigned long long t_b = sceKernelGetSystemTimeWide();
 
         uint32_t *fb = vram[cur];

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "gen/ntrig_table.h"
 
+void (*g_nfm_trace)(const char *, int, int);
 int g_polys_in, g_polys_drawn;
 
 #define MAXN 64          /* largest polygon in the game is 28 verts (stage lettering); warn beyond this */
@@ -258,6 +259,7 @@ static void outline_ipoly(const Medium *m, const int *xs, const int *ys, int n, 
 
 void medium_draw_backdrop(Medium *m)
 {
+    NFM_TRACE("backdrop", 0, 0);
     if (m->zy > 90) m->zy = 90;
     if (m->zy < -90) m->zy = -90;
     if (m->xz > 360) m->xz -= 360;
@@ -541,6 +543,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (glass == 2 && (m->trk != 0 || av > 6700)) vis = false;
     }
     if (!vis) return;
+    NFM_TRACE("shade", (int)pi, 0);
 
     int av = o->av[pi];
     if (!(gr0 == -14 || gr0 == -15 || gr0 == -12)) b2 = facing_away(m, ax, bay, baz, N);
@@ -570,6 +573,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
                 g  = (g  * m->fogd + m->cfade[1]) / (m->fogd + 1);
                 bl = (bl * m->fogd + m->cfade[2]) / (m->fogd + 1);
             }
+    NFM_TRACE("fill", (int)pi, N);
     fill_ipoly(m, px, py, N, r, g, bl);
     g_polys_drawn++;
     if (!b) {
@@ -622,6 +626,7 @@ void inst_draw(Medium *m, Inst *o)
             }
             for (uint32_t i = 0; i < np; i++) {
                 g_polys_in++;
+                NFM_TRACE("poly", (int)order[i], (int)np);
                 plane_draw(m, o, (uint32_t)order[i], o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy,
                            o->noline || (mesh->flags & (PMF_STONECOLD | PMF_NEWSTONE)) != 0, n4);
             }

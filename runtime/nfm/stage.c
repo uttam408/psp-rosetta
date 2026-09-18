@@ -152,11 +152,14 @@ static int by_dist_desc(const void *a, const void *b)
 void scene_draw(Medium *m, Scene *sc)
 {
     medium_draw_backdrop(m);
+    NFM_TRACE("backdrop done", 0, 0);
     if (sc->n > g_ocap) { g_ocap = sc->n; g_order = realloc(g_order, g_ocap * sizeof *g_order); }
     uint32_t nd = 0;
-    for (uint32_t i = 0; i < sc->n; i++)
+    for (uint32_t i = 0; i < sc->n; i++) {
+        NFM_TRACE("obj0", (int)i, 0);
         if (sc->inst[i].dist == 0) inst_draw(m, &sc->inst[i]);
         else g_order[nd++] = &sc->inst[i];
+    }
     qsort(g_order, nd, sizeof *g_order, by_dist_desc);
-    for (uint32_t i = 0; i < nd; i++) inst_draw(m, g_order[i]);
+    for (uint32_t i = 0; i < nd; i++) { NFM_TRACE("obj", (int)(g_order[i] - sc->inst), (int)i); inst_draw(m, g_order[i]); }
 }
