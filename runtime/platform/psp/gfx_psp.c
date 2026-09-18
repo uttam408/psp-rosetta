@@ -209,10 +209,18 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
      * enemies/bullets/FX spawn and travel well outside the 480x272 view. */
     {
         float dsx = (float)fabs(sx), dsy = (float)fabs(sy);
-        float margin = (float)(fw + fh) * (dsx > dsy ? dsx : dsy) + 8.0f;
-        if (screenx + margin < 0 || screenx - margin > SCR_W ||
-            screeny + margin < 0 || screeny - margin > SCR_H)
-            return;
+        if (angle == 0.0) {
+            /* exact rect test for unrotated sprites */
+            float x0 = screenx - (float)ox * dsx, y0 = screeny - (float)oy * dsy;
+            if (x0 + fw * dsx <= 0 || x0 >= SCR_W ||
+                y0 + fh * dsy <= 0 || y0 >= SCR_H)
+                return;
+        } else {
+            float margin = (float)(fw + fh) * (dsx > dsy ? dsx : dsy) + 8.0f;
+            if (screenx + margin < 0 || screenx - margin > SCR_W ||
+                screeny + margin < 0 || screeny - margin > SCR_H)
+                return;
+        }
     }
 
     bind(t);
@@ -279,8 +287,14 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
 void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
 {
     if (!t) return;
-    for (int ty = 0; ty < span_h; ty += t->th)
-        for (int tx = 0; tx < span_w; tx += t->tw)
+    /* whole band off-screen vertically -> nothing to submit; otherwise only
+     * the rows/columns that intersect the screen. */
+    float top = (float)(y - fp_camera.y), left = (float)(x - fp_camera.x);
+    if (top >= SCR_H || top + span_h <= 0) return;
+    int ty0 = top < 0 ? ((int)(-top) / t->th) * t->th : 0;
+    int tx0 = left < 0 ? ((int)(-left) / t->tw) * t->tw : 0;
+    for (int ty = ty0; ty < span_h && top + ty < SCR_H; ty += t->th)
+        for (int tx = tx0; tx < span_w && left + tx < SCR_W; tx += t->tw)
             gfx_draw(t, x + tx, y + ty, 0, 0, 0, 1, 1, 0xFFFFFF, 0, 0, t->tw, t->th);
 }
 
