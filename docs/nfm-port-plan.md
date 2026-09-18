@@ -142,6 +142,19 @@ install a Java 8-era JDK (Temurin 8) or write a ~50-line harness that stubs
 `java.applet.Applet` and drives `Mad`/`Control`/`Medium` directly with no AWT window.
 The second is more useful long-term (headless CI).
 
+### Luftrauser bugs to pre-empt (from `luftrauser-port-notes.md`)
+
+| Luftrauser bug | NFM exposure | Do this |
+|---|---|---|
+| #1 double/libm on the PSP's single-precision FPU (10 fps, 25-40 us per trig call) | Heavier: `Mad` has ~102 trig/sqrt/abs calls, `Plane` 28, `ContO` 43, `Control` 31, and they all run every frame per polygon | `real.h` (float, `rsin`/`rcos`/...) from the first line of C. Precompute sin/cos tables for the integer-degree angles NFM uses. Add a bench mode in M1, not M8 |
+| Fidelity: float vs double | Java `Math.sin/cos` are doubles and the results are truncated to `int`. A float port can land one unit off, and physics amplifies that | Diff against the Java oracle early (M6 can start as soon as M4 drives). Expect and log a tolerance, and compare a table-based sin/cos against Java's per-degree values before trusting either |
+| Determinism (LCG rand) | `Math.random()` is used in `Medium` (42x), `Plane` (10x, damage/shatter) and `CheckPoints`, and none of it is seeded | Treat as cosmetic and keep it out of the state diff. Only `mountains()` seeds `java.util.Random`, and that is exact (see §3) |
+| #2/#3 normalized UVs, no repeat on swizzled data | Mostly N/A (3D is untextured), applies to HUD sprites | Keep the rule for the HUD atlas |
+| #4/#5 layering by GPU order, scissor exclusive corner | NFM's sort is CPU-side so order is explicit. Scissor matters for the 480x270 viewport | Explicit scissor; bottom-right is exclusive |
+| #6 one big rendering rewrite that showed nothing | Same risk when moving from CPU sort to GU depth | Keep the known-good flat-triangle path as the fallback commit |
+| #8 position from logical size, not POT padding | HUD/menu GIFs are converted to POT | Use the `.ptx` logical width/height |
+| #10 frame pacing | NFM's loop sleeps to a fixed rate (`GameSparker` `Thread.sleep`) and physics is per frame | Fixed-step sim, render decoupled; don't "fix" frame-dependent physics |
+
 ## 6. Open decisions
 
 1. **Transpile vs hand-port.** Recommendation: hand-port, like Luftrauser. The Procyon
