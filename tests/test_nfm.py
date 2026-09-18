@@ -21,6 +21,7 @@ from pipeline.nfm import tables                         # noqa: E402
 from pipeline.nfm.pmesh import pack_pmesh, unpack_pmesh  # noqa: E402
 from pipeline.nfm.rad import (MAT_GLASS, PAINT_FIRST, PAINT_SECOND, args,  # noqa: E402
                               f32, parse_rad)
+from pipeline.nfm.pstg import unpack_pstg, pack_pstg      # noqa: E402
 from pipeline.nfm.stage import parse_stage              # noqa: E402
 
 CAR = """\
@@ -234,6 +235,21 @@ class TestStage(unittest.TestCase):
         self.assertEqual(o[6]["args"], [3, 4, 5, 6, 7])
         self.assertEqual(o[7], {"op": "maxr", "count": 11, "pos": 4800, "offset": -200})
 
+    def test_pstg_roundtrip(self):
+        d = unpack_pstg(pack_pstg(self.s))
+        self.assertEqual(d["sky"], [207, 232, 255])
+        self.assertEqual(d["clouds"], [255, 255, 255, 3, -1062])
+        self.assertEqual((d["nlaps"], d["lightson"], d["name"], d["track"]),
+                         (4, True, "Test,Stage", "stage1"))
+        self.assertEqual((d["volume"], d["size"]), (150, 35000))
+        o = d["objects"]
+        self.assertEqual(len(o), 8)
+        self.assertEqual((o[0]["op"], o[0]["a"][:3], o[0]["flags"]), ("set", [o[0]["a"][0], o[0]["a"][1], o[0]["a"][2]], ord("p")))
+        self.assertEqual((o[4]["op"], o[4]["a"][3], o[4]["flags"]), ("chk", -500, 1))
+        self.assertEqual((o[5]["op"], o[5]["flags"]), ("fix", 1))
+        self.assertEqual(o[6]["a"], [3, 4, 5, 6, 7])
+        self.assertEqual(o[7]["a"][:3], [11, 4800, -200])
+
     def test_volume_clamped(self):
         s = parse_stage("soundtrack(x,5,0)\n")
         self.assertEqual(s["soundtrack"]["volume"], 50)
@@ -319,6 +335,8 @@ class TestJavaAdapter(unittest.TestCase):
         st = recs["data/stage/1"]
         self.assertTrue(st["parsed"])
         self.assertEqual(st["objects"], 8)
+        self.assertTrue(st["file"].endswith(".pstg"))
+        self.assertEqual((out / st["file"]).read_bytes()[:4], b"PSTG")
         self.assertEqual(recs["data/music/stage1"]["passthrough"], True)
 
 

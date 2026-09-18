@@ -25,6 +25,7 @@ typedef struct {
 } PmTrack;
 #pragma pack(pop)
 
+enum { PMF_DECOR = 1, PMF_SHADOW = 2, PMF_ROAD = 4, PMF_STONECOLD = 64, PMF_NEWSTONE = 128 };
 enum { PM_MAT_NORMAL = 0, PM_MAT_GLASS = 1, PM_MAT_GSHADOW = 2 };
 enum { PM_LIGHT_NONE = 0, PM_LIGHT_FRONT = 1, PM_LIGHT_BACK = 2 };
 enum { PM_PAINT_NONE = 0, PM_PAINT_FIRST = 1, PM_PAINT_SECOND = 2 };
@@ -34,6 +35,7 @@ typedef struct {
     uint32_t nverts, npolys, nindices, max_r;
     uint8_t  nwheels, ntracks;
     uint8_t  first_color[3], second_color[3];
+    uint16_t disline, disp, grounded_pct;
     const PmVert  *verts;
     const PmPoly  *polys;
     const uint16_t *indices;

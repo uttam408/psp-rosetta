@@ -2,13 +2,18 @@
 
 Little-endian.  Layout::
 
-    HEADER (48 bytes, HDR_FMT)
-      char[4] "PMSH"  u16 version(=1)  u16 flags
+    HEADER (56 bytes, HDR_FMT)
+      char[4] "PMSH"  u16 version(=2)  u16 flags
       u32 nverts  u32 npolys  u32 nindices  u32 max_r
       u8 nwheels  u8 ntracks  u16 pad
       u8[3] first_color  pad   u8[3] second_color  pad   i16[5] rims   pad[2]
+      u16 disline  u16 disp  u16 grounded_pct  u16 pad
     flags: bit0 decorative  bit1 shadow  bit2 road  bit3 has 1stColor
-           bit4 has 2ndColor  bit5 has rims
+           bit4 has 2ndColor  bit5 has rims  bit6 stonecold (no outlines)
+           bit7 newstone
+    disline = fade[] index of the draw distance (already x2, default 14);
+    disp    = minimum on-screen width in px (default 0);
+    grounded_pct = ``grounded(n)`` argument (default 100; grounded = pct / 100).
     vertices  nverts  * { f32 x, y, z }      model units, Y-down as authored
     polys     npolys  * 18 bytes (POLY_FMT): u32 first_index, u16 nverts,
                         u8 material, u8 light, u8 r,g,b, u8 paint,
@@ -33,7 +38,7 @@ from typing import Any
 
 from .rad import Model
 
-HDR_FMT = "<4sHHIIIIBBH3sx3sx5hxx"      # 48 bytes
+HDR_FMT = "<4sHHIIIIBBH3sx3sx5hxxHHHH"    # 56 bytes
 POLY_FMT = "<IHBBBBBBhhBx"              # 18 bytes
 WHEEL_FMT = "<7i"                       # 28 bytes
 TRACK_FMT = "<3BxiiiiiiiiiBBxx"         # 44 bytes
@@ -51,12 +56,15 @@ def pack_pmesh(m: Model) -> bytes:
         idx.extend(range(base, base + len(p.verts)))
     flags = (("decorative" in m.flags) | (("shadow" in m.flags) << 1)
              | (("road" in m.flags) << 2) | ((m.first_color is not None) << 3)
-             | ((m.second_color is not None) << 4) | ((m.rims is not None) << 5))
+             | ((m.second_color is not None) << 4) | ((m.rims is not None) << 5)
+             | (("stonecold" in m.flags) << 6) | (("newstone" in m.flags) << 7))
     rims = (tuple(m.rims) + (0,) * 5)[:5] if m.rims else (0,) * 5
     out = bytearray(struct.pack(
-        HDR_FMT, b"PMSH", 1, flags, len(verts), len(m.polys), len(idx), m.max_r,
+        HDR_FMT, b"PMSH", 2, flags, len(verts), len(m.polys), len(idx), m.max_r,
         len(m.wheels), len(m.tracks), 0,
-        bytes(m.first_color or (0, 0, 0)), bytes(m.second_color or (0, 0, 0)), *rims))
+        bytes(m.first_color or (0, 0, 0)), bytes(m.second_color or (0, 0, 0)), *rims,
+        m.props.get("disline", 14), m.props.get("disp", 0),
+        round(m.props.get("grounded", 1.0) * 100), 0))
     for v in verts:
         out += struct.pack("<3f", *v)
     out += polys
@@ -73,8 +81,9 @@ def pack_pmesh(m: Model) -> bytes:
 def unpack_pmesh(data: bytes) -> dict[str, Any]:
     """Inverse of pack_pmesh, for tests and tooling."""
     (magic, ver, flags, nv, npoly, ni, max_r, nw, nt, _pad,
-     c1, c2, *rims) = struct.unpack_from(HDR_FMT, data, 0)
-    assert magic == b"PMSH" and ver == 1, (magic, ver)
+     c1, c2, *rest) = struct.unpack_from(HDR_FMT, data, 0)
+    rims, (disline, disp, grounded, _p2) = rest[:5], rest[5:]
+    assert magic == b"PMSH" and ver == 2, (magic, ver)
     off = struct.calcsize(HDR_FMT)
     verts = [struct.unpack_from("<3f", data, off + 12 * i) for i in range(nv)]
     off += 12 * nv
@@ -87,5 +96,6 @@ def unpack_pmesh(data: bytes) -> dict[str, Any]:
     off += 28 * nw
     tracks = [struct.unpack_from(TRACK_FMT, data, off + 44 * i) for i in range(nt)]
     return {"flags": flags, "max_r": max_r, "first": tuple(c1), "second": tuple(c2),
-            "rims": tuple(rims), "verts": verts, "polys": polys, "indices": indices,
+            "rims": tuple(rims), "disline": disline, "disp": disp, "grounded": grounded,
+            "verts": verts, "polys": polys, "indices": indices,
             "wheels": wheels, "tracks": tracks}
