@@ -142,10 +142,24 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
               int fx, int fy, int fw, int fh)
 {
     if (!t) return;
-    bind(t);
 
     float screenx = (float)(x - fp_camera.x);
     float screeny = (float)(y - fp_camera.y);
+
+    /* frustum cull: skip fully off-screen sprites before touching the GU at
+     * all (no bind, no matrix, no draw). Margin is deliberately generous
+     * (covers any origin offset + rotation) — can only skip truly invisible
+     * sprites, never a visible one. This is the fix for the 20+-enemy stutter:
+     * enemies/bullets/FX spawn and travel well outside the 480x272 view. */
+    {
+        float dsx = (float)fabs(sx), dsy = (float)fabs(sy);
+        float margin = (float)(fw + fh) * (dsx > dsy ? dsx : dsy) + 8.0f;
+        if (screenx + margin < 0 || screenx - margin > SCR_W ||
+            screeny + margin < 0 || screeny - margin > SCR_H)
+            return;
+    }
+
+    bind(t);
 
     sceGumMatrixMode(GU_MODEL);
     sceGumLoadIdentity();

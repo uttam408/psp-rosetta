@@ -154,7 +154,8 @@ static void hud(void)
     Entity *pl = world_first_type(&g_game.world, ETYPE_PLAYER);
     bool attract = world_count_type(&g_game.world, ETYPE_UBOOT) > 0 && !pl;
 
-    snprintf(buf, sizeof buf, "%d FPS", (int)(g_fps + 0.5f));
+    snprintf(buf, sizeof buf, "%d FPS  %d ENT",
+             (int)(g_fps + 0.5f), world_count(&g_game.world));
     text_draw(buf, fp_width - 8, 8, HUD_RGB, TEXT_RIGHT);
 
     if (g_game.game_over) {

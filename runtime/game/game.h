@@ -10,14 +10,16 @@
 /* draw order — FlashPunk convention: higher layer renders first (further back) */
 enum {
     LAYER_SPACE  = 5000,
-    LAYER_WATER  = 4000,
     LAYER_CLOUD  = 4000,
-    LAYER_BEHIND = 2000,   /* Bullet / EBullet / Boot — faithful to the AS3 */
+    LAYER_BEHIND = 2000,   /* Bullet / EBullet / Boot / Bootje — AS3 layer=2000 */
     LAYER_ENEMY  = 300,
     LAYER_FX     = 200,
     LAYER_PART   = 150,
     LAYER_PLAYER = 100,
     LAYER_BLURB  = 50,
+    LAYER_WATER  = 0,      /* front-most: draws OVER anything below the surface
+                             * (sinking ships, the player underwater) so they
+                             * visually submerge instead of floating on top */
 };
 
 typedef struct Game {

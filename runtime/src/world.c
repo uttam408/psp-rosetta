@@ -72,6 +72,8 @@ void world_render(World *w)
     }
 }
 
+int world_count(World *w) { return w->count; }
+
 int world_count_type(World *w, EntityType t)
 {
     int c = 0;

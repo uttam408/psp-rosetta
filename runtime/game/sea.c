@@ -161,7 +161,7 @@ Entity *boot_spawn(double x)
 /* Bootje — boat (Interaction/Enemies/Bootje.as) */
 Entity *bootje_spawn(double x)
 {
-    Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/bootje/ship", LAYER_ENEMY);
+    Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/bootje/ship", LAYER_BEHIND);
     if (!s) return NULL;
     s->en.health = 20;
     s->en.score = SPEC_SCORE_BOOTJE;

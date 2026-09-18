@@ -13,6 +13,7 @@ struct GfxTex {
 
 static SDL_Window   *g_win;
 static SDL_Renderer *g_ren;
+static int g_lw = 480, g_lh = 272;
 
 bool gfx_init(const char *title, int lw, int lh, int scale)
 {
@@ -28,6 +29,7 @@ bool gfx_init(const char *title, int lw, int lh, int scale)
     if (!g_ren) return false;
     SDL_RenderSetLogicalSize(g_ren, lw, lh);
     SDL_SetRenderDrawBlendMode(g_ren, SDL_BLENDMODE_BLEND);
+    g_lw = lw; g_lh = lh;
     return true;
 }
 
@@ -98,6 +100,14 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
     double dsx = fabs(sx), dsy = fabs(sy);
     double screenx = x - fp_camera.x;
     double screeny = y - fp_camera.y;
+
+    /* frustum cull: skip fully off-screen sprites before touching the GPU.
+     * margin is deliberately generous (covers any origin offset + rotation)
+     * so this can only ever skip things that are truly invisible. */
+    double margin = (fw + fh) * (dsx > dsy ? dsx : dsy) + 8;
+    if (screenx + margin < 0 || screenx - margin > g_lw ||
+        screeny + margin < 0 || screeny - margin > g_lh)
+        return;
 
     SDL_Rect src = { fx, fy, fw, fh };
     SDL_FRect dst = { (float)(screenx - ox * dsx), (float)(screeny - oy * dsy),

@@ -23,6 +23,7 @@ void    world_remove(World *w, Entity *e);   /* marks !alive; swept post-update 
 void    world_update(World *w);
 void    world_render(World *w);              /* layer descending, then by add order */
 
+int      world_count(World *w);                 /* total live entities (perf diagnostic) */
 int      world_count_type(World *w, EntityType t);
 Entity  *world_first_type(World *w, EntityType t);
 /* FlashPunk World.furthestFromEntity: the live entity of type `t`, != from,
