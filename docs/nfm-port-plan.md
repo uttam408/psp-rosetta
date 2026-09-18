@@ -121,8 +121,8 @@ gameplay, and keep that commit as the fallback.
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | **Pipeline** (this PR) | `build --game nfm` yields a pak; tests green |
-| M1 | Platform skeleton: reuse `runtime/src` + `platform/{sdl,psp}`; SDL headless screenshot and bench mode *first* | black screen -> one flat triangle on SDL and PPSSPP |
-| M2 | Model loader: `.pmesh` -> draw a car and a road piece, orbit camera | screenshot of `mustang` matches the original's render of the same model |
+| M1 | Platform skeleton: reuse `runtime/src` + `platform/{sdl,psp}`; SDL headless screenshot and bench mode *first* | **SDL half done** (`runtime/nfm/`, `Makefile.nfm`: `--shot`, `--bench`, `--list`). PSP/PPSSPP half not started |
+| M2 | Model loader: `.pmesh` -> draw a car and a road piece, orbit camera | **Loader + CPU renderer done**: all 84 meshes load; `mustang` and `sroad` render (0.075 ms/frame on the host, 124 polys). Not yet compared against the original's render; shading is a placeholder until `Plane` lighting (M3); wheels are procedural, so not drawn |
 | M3 | `Medium` + `Plane`: camera, sort, per-poly lighting, fog, sky/ground; stage loader (`set`/`chk`/`fix`, then `pile`/mountains/walls) | stage 1 renders end to end, fly-through |
 | M4 | `Mad` + `Wheels` + `Trackers`: physics and collision, car drives | drive stage 1 on the SDL build |
 | M5 | `Control` + PSP input, checkpoints, laps, `Record` | complete a race; replay round-trips |
