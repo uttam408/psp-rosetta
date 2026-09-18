@@ -46,7 +46,25 @@ void gfx_frame_begin(uint32_t rgb)
     SDL_RenderClear(g_ren);
 }
 
-void gfx_frame_end(void) { SDL_RenderPresent(g_ren); }
+/* Mirrors the PSP backend's ~45fps cap (see gfx_psp.c) for parity when testing
+ * on desktop. VSync alone would cap to the monitor's refresh (often 60+), so
+ * pace with a sleep before presenting if we're running ahead of schedule. */
+#define TARGET_FPS 45.0
+
+void gfx_frame_end(void)
+{
+    static Uint64 last = 0;
+    Uint64 now = SDL_GetPerformanceCounter();
+    double freq = (double)SDL_GetPerformanceFrequency();
+    double target = freq / TARGET_FPS;
+    if (last != 0) {
+        double elapsed = (double)(now - last);
+        if (elapsed < target)
+            SDL_Delay((Uint32)((target - elapsed) * 1000.0 / freq));
+    }
+    SDL_RenderPresent(g_ren);
+    last = SDL_GetPerformanceCounter();
+}
 
 GfxTex *gfx_tex_load(const PakAsset *a)
 {
