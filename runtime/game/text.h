@@ -13,6 +13,7 @@
 
 void text_init(void);
 void text_draw(const char *s, real sx, real sy, uint32_t rgb, int align);
+void text_fill(real sx, real sy, real w, real h, uint32_t rgb);   /* solid screen-space rect */
 int  text_width(const char *s);   /* pixels of the widest line */
 
 #endif
