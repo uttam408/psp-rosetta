@@ -42,6 +42,12 @@ static int isqrt_n(int n)
 }
 /* (float)(sqrt((double)n) / 100.0) in single precision (may differ from Java in the last ulp) */
 static float sqrt100f(int n) { return sqrtf((float)n) / 100.0f; }
+/* frame pixel packing: 0x00RRGGBB, or PSP-native ABGR8888 (NFM_ABGR) so the blit is a plain copy */
+#ifdef NFM_ABGR
+#define PACK(r, g, b) (((uint32_t)(b) << 16) | ((uint32_t)(g) << 8) | (uint32_t)(r))
+#else
+#define PACK(r, g, b) (((uint32_t)(r) << 16) | ((uint32_t)(g) << 8) | (uint32_t)(b))
+#endif
 static int clamp255(int v) { return v > 255 ? 255 : v < 0 ? 0 : v; }
 
 float m_sin(int d) { while (d >= 360) d -= 360; while (d < 0) d += 360; return NTSIN[d]; }
@@ -188,6 +194,9 @@ typedef struct { float x, y; } V2;
 
 static void fill_poly(Frame *f, const V2 *v, int n, uint32_t color)
 {
+#ifdef NFM_NOFILL
+    return;
+#endif
     float ymin = v[0].y, ymax = v[0].y;
     for (int i = 1; i < n; i++) { if (v[i].y < ymin) ymin = v[i].y; if (v[i].y > ymax) ymax = v[i].y; }
     int y0 = (int)ceilf(ymin - 0.25f), y1 = (int)floorf(ymax - 0.25f);
@@ -218,6 +227,9 @@ static void fill_poly(Frame *f, const V2 *v, int n, uint32_t color)
 
 static void line(Frame *f, int x0, int y0, int x1, int y1, uint32_t c)
 {
+#ifdef NFM_NOFILL
+    return;
+#endif
     int dx = iabs(x1 - x0), dy = -iabs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy;
     for (;;) {
         if (x0 >= 0 && x0 < f->w && y0 >= 0 && y0 < f->h) f->px[(size_t)y0 * f->w + x0] = c;
@@ -232,7 +244,7 @@ static void fill_ipoly(const Medium *m, const int *xs, const int *ys, int n, int
 {
     V2 v[MAXN];
     for (int i = 0; i < n; i++) { v[i].x = xs[i] * m->scale; v[i].y = ys[i] * m->scale; }
-    fill_poly(m->frame, v, n, ((uint32_t)clamp255(r) << 16) | ((uint32_t)clamp255(g) << 8) | (uint32_t)clamp255(b));
+    fill_poly(m->frame, v, n, PACK(clamp255(r), clamp255(g), clamp255(b)));
 }
 
 static void outline_ipoly(const Medium *m, const int *xs, const int *ys, int n, uint32_t c)
@@ -547,7 +559,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (!solo) {
             uint32_t oc = 0;                /* lit stages: outline is half the poly's own colour */
             if (m->lightson && light != 0)
-                oc = (uint32_t)clamp255(P->r / 2) << 16 | (uint32_t)clamp255(P->g / 2) << 8 | (uint32_t)clamp255(P->b / 2);
+                oc = PACK(clamp255(P->r / 2), clamp255(P->g / 2), clamp255(P->b / 2));
             outline_ipoly(m, px, py, N, oc);
         }
     } else if (road && av <= 3000 && m->trk == 0 && m->fade[0] > 4000) {
@@ -555,7 +567,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         r -= 10; if (r < 0) r = 0;
         g -= 10; if (g < 0) g = 0;
         bl -= 10; if (bl < 0) bl = 0;
-        outline_ipoly(m, px, py, N, (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)bl);
+        outline_ipoly(m, px, py, N, PACK(r, g, bl));
     }
     (void)glass;
 }

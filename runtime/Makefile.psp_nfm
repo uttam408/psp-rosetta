@@ -8,9 +8,9 @@ TARGET = nfm_view_psp
 OBJS = nfm/pmesh.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/main_nfm_psp.o
 
 INCDIR   = src .
-CFLAGS   = -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -ffp-contract=off -fwrapv -MMD -MP
+CFLAGS   = $(XCFLAGS) -DNFM_ABGR -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -ffp-contract=off -fwrapv -MMD -MP
 ASFLAGS  = $(CFLAGS)
-LIBS     = -lpspgum -lpspgu -lm -lpspctrl -lpspdisplay -lpspge -lpspdebug
+LIBS     = -lpspgum -lpspgu -lm -lpspctrl -lpspdisplay -lpspge -lpspdebug -lpsppower
 
 EXTRA_TARGETS   = EBOOT.PBP
 PSP_EBOOT_TITLE = NFM Viewer

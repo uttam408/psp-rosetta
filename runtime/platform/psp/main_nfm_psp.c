@@ -8,6 +8,7 @@
 #include <pspdisplay.h>
 #include <pspctrl.h>
 #include <pspge.h>
+#include <psppower.h>
 #include <psputils.h>
 #include <stdio.h>
 #include <string.h>
@@ -41,16 +42,10 @@ static uint32_t g_px[W * H];
 static char g_names[64][96];
 static int g_nstages;
 
+/* g_px is already PSP ABGR8888 (built with -DNFM_ABGR): plain row copy into VRAM */
 static void blit(uint32_t *vram)
 {
-    for (int y = 0; y < H; y++) {
-        const uint32_t *s = g_px + y * W;
-        uint32_t *d = vram + y * STRIDE;
-        for (int x = 0; x < W; x++) {
-            uint32_t c = s[x];   /* 0x00RRGGBB -> PSP ABGR8888 */
-            d[x] = 0xFF000000u | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
-        }
-    }
+    for (int y = 0; y < H; y++) memcpy(vram + y * STRIDE, g_px + y * W, W * 4);
 }
 
 int main(void)
@@ -58,6 +53,7 @@ int main(void)
     int th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
 
+    scePowerSetClockFrequency(333, 333, 166);
     pspDebugScreenInit();
     if (!pak_open("assets.pak")) {
         pspDebugScreenPrintf("assets.pak not found next to EBOOT.PBP\n");
