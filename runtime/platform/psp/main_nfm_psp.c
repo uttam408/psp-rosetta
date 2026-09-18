@@ -147,7 +147,8 @@ int main(void)
             pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys ", g_names[stage_i], fps, g_polys_drawn, g_polys_in);
         }
         sceDisplayWaitVblankStart();
-        sceDisplaySetFrameBuf((void *)(cur * FBSZ), STRIDE, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_NEXTFRAME);
+        /* topaddr must be the real VRAM address: 0 means "disable display" */
+        sceDisplaySetFrameBuf((void *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ), STRIDE, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_NEXTFRAME);
         cur ^= 1;
 
         frames++;
