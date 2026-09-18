@@ -134,6 +134,12 @@ static int run_shot2(int ticks, const char *out, const char *script, bool seq)
         for (int i = 0; i < 4; i++)
             jet_spawn(fp_camera.x + 120 + i * 90, 500 + (i & 1) * 30);
     }
+    if (SDL_strncmp(script, "!SPLASH", 7) == 0) {
+        game_splash_start();
+        for (int i = 0; i < ticks; i++) game_tick();
+        game_draw();
+        return gfx_save_bmp(out) ? 0 : 2;
+    }
     if (SDL_strncmp(script, "!BENCH", 6) == 0) {   /* debug: CPU cost at ~300 entities */
         for (int i = 0; i < 100; i++) game_tick();
         for (int i = 0; i < 60; i++) brit_spawn(fp_camera.x + 40 + (i % 12) * 30, fp_camera.y + 20 + (i / 12) * 30);

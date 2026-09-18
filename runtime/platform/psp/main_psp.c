@@ -128,6 +128,7 @@ int main(void)
         FILE *f = fopen("bench.on", "r");
         if (f) { fclose(f); run_bench(); sceKernelExitGame(); return 0; }
     }
+    game_splash_start();
 
     const double DT_US = 1000000.0 / (double)SPEC_ENGINE_FPS;
     double accum = 0;

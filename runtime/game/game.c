@@ -3,6 +3,7 @@
  * difficulty, scoring, HUD, game-over timeline (TODO — port-spec §2,§5,§6,§7). */
 #include "game.h"
 #include "text.h"
+#include "logo_data.h"
 #include "../src/input.h"
 #include "../src/audio.h"
 #include <stdio.h>
@@ -13,6 +14,41 @@
 
 static float g_fps;
 void game_set_fps(float fps) { g_fps = fps; }
+
+/* Boot splash: the PSPRosetta logo fades in, holds, fades out (any button skips).
+ * Platform-enabled (PSP) so the headless SDL screenshot tests are unaffected. */
+#define SPLASH_IN    20
+#define SPLASH_HOLD  45
+#define SPLASH_OUT   25
+static int g_splash = -1;                 /* -1 = off, else ticks elapsed */
+static GfxTex *g_logo;
+
+void game_splash_start(void)
+{
+    g_logo = gfx_tex_from_pixels(logo_px, LOGO_TEX_W, LOGO_TEX_H);
+    g_splash = g_logo ? 0 : -1;
+}
+
+static void splash_tick(void)
+{
+    if (in_pressed(ACT_FIRE) || in_pressed(ACT_THRUST) || in_pressed(ACT_START) ||
+        ++g_splash >= SPLASH_IN + SPLASH_HOLD + SPLASH_OUT)
+        g_splash = -1;
+}
+
+static void splash_draw(void)
+{
+    int t = g_splash;
+    int lvl = 255;
+    if (t < SPLASH_IN) lvl = t * 255 / SPLASH_IN;
+    else if (t >= SPLASH_IN + SPLASH_HOLD) lvl = (SPLASH_IN + SPLASH_HOLD + SPLASH_OUT - t) * 255 / SPLASH_OUT;
+    if (lvl < 0) lvl = 0;
+    uint32_t tint = (uint32_t)lvl * 0x010101u;
+    gfx_frame_begin(0x000000);
+    gfx_draw(g_logo, fp_camera.x + (fp_width - LOGO_W) / 2, fp_camera.y + (fp_height - LOGO_H) / 2,
+             0, 0, 0, 1, 1, tint, 0, 0, LOGO_W, LOGO_H);
+    gfx_frame_end();
+}
 
 /* --- high score (SharedObject "Luftrauser" / "Highscore" -> a 4-byte file) -- */
 static int hiscore_load(void)
@@ -116,6 +152,7 @@ static void spawn_more_enemies(void)
 
 void game_tick(void)
 {
+    if (g_splash >= 0) { splash_tick(); return; }
     if (in_pressed(ACT_START) && !g_game.game_over)
         g_game.paused = !g_game.paused;
     if (g_game.paused) return;                     /* freeze the sim entirely */
@@ -197,6 +234,7 @@ static void hud(void)
 
 void game_draw(void)
 {
+    if (g_splash >= 0) { splash_draw(); return; }
     gfx_frame_begin(SPEC_ENGINE_CLEAR_RGB);
     world_render(&g_game.world);
     hud();

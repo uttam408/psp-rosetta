@@ -65,6 +65,7 @@ void game_begin_combat(void);   /* UBoot.removeThis -> spawnEnemies + start loop
 void game_start(void);   /* build the attract-mode world */
 void game_tick(void);    /* per fixed frame: orchestration around world_update  */
 void game_draw(void);    /* clear + world_render + HUD                          */
+void game_splash_start(void);   /* optional boot logo (PSP) */
 void game_set_fps(float fps);   /* platform reports real (render) fps for the HUD */
 
 #endif
