@@ -17,7 +17,7 @@ static void cloud_update(Entity *e)
 {
     Cloud *c = e->user;
     e->x += ent_hspeed(e);
-    double w = fp_width, cw = c->frame.w;
+    real w = fp_width, cw = c->frame.w;
     if (e->x < fp_camera.x - 600)
         e->x = fp_camera.x + w + cw + 500;
     if (e->x > fp_camera.x + w + cw + 600)
@@ -48,7 +48,7 @@ Entity *cloud_spawn(void)
     c->t = tex("image/interaction/fx/cloud/cloud");
     if (a && a->nframes) c->frame = a->frames[fp_rand(a->nframes)];
 
-    c->e.x = fp_camera.x - 500 + (double)fp_rand((uint32_t)(fp_width + 1000));
+    c->e.x = fp_camera.x - 500 + (real)fp_rand((uint32_t)(fp_width + 1000));
     c->e.y = 100 + fp_rand(400);
     ent_set_hspeed(&c->e, fp_choose2(-1.0, 1.0) * fp_random());
     return world_add(&g_game.world, &c->e);

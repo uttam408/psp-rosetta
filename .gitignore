@@ -21,3 +21,5 @@ runtime/assets.pak
 runtime/hiscore.dat
 runtime/icon0.png
 runtime/pic1.png
+
+*.d

@@ -17,10 +17,10 @@ typedef struct {
     int     burst;            /* shots left in the current burst           */
     int     burst_gap;        /* frames between burst shots                */
     int     reload_min, reload_rand;
-    double  bullet_speed;
-    double  firex, firey;     /* snapshotted aim (Boot); live for Bootje   */
+    real  bullet_speed;
+    real  firex, firey;     /* snapshotted aim (Boot); live for Bootje   */
     bool    aim_snapshot;
-    double  bullet_ox, bullet_oy;
+    real  bullet_ox, bullet_oy;
     const char *fire_snd;
     const char *sink_fx;      /* explosion spawned x3 on death + randomly   */
 } Sea;
@@ -53,8 +53,8 @@ static void sea_fire(Sea *s)
         s->burst--;
         s->t_fire = s->burst_gap;
         if (player_health(pl) > 0) {
-            double ax = s->aim_snapshot ? s->firex : pl->x;
-            double ay = s->aim_snapshot ? s->firey : pl->y;
+            real ax = s->aim_snapshot ? s->firex : pl->x;
+            real ay = s->aim_snapshot ? s->firey : pl->y;
             snd_play(s->fire_snd, 1.0f, 0.0f);
             ebullet_spawn(e->x + s->bullet_ox, e->y + s->bullet_oy,
                           fp_angle(e->x, e->y, ax, ay), s->bullet_speed);
@@ -78,7 +78,7 @@ static void sea_update(Entity *e)
 
         Entity *pl = player_e();
         if (pl && world_collide(&g_game.world, ETYPE_PLAYER, e, e->x, e->y)) {
-            player_health_delta(pl, -(double)SPEC_PLAYER_DAMAGE_DMG_BOAT_CONTACT);
+            player_health_delta(pl, -(real)SPEC_PLAYER_DAMAGE_DMG_BOAT_CONTACT);
             ent_motion_add(pl, fp_angle(e->x, e->y, pl->x, pl->y), 2);
             en->health -= 2;
             if (en->health <= 0) { sea_sink_start(en); }
@@ -112,7 +112,7 @@ static void sea_render(Entity *e)
                  ent_hspeed(e) < 0 ? -1 : 1, 1, 0xFFFFFF, 0, 0, s->ship_w, s->ship_h);
 }
 
-static Sea *sea_new(EntityType t, double x, const char *tex_id, int layer)
+static Sea *sea_new(EntityType t, real x, const char *tex_id, int layer)
 {
     Sea *s = sea_pool_get();
     if (!s) return NULL;
@@ -124,20 +124,23 @@ static Sea *sea_new(EntityType t, double x, const char *tex_id, int layer)
     s->en.e.layer = layer;
     s->en.on_death = sea_sink_start;
 
+    /* content size from frames[0], NOT a->w/h (those are the POT-padded
+       texture dims: the 204x48 battleship is a 256x64 texture, which made it
+       float 16px above the waterline). */
     const PakAsset *a = pak_find(tex_id);
-    s->ship_w = a ? a->w : 64;
-    s->ship_h = a ? a->h : 32;
+    s->ship_w = (a && a->nframes) ? a->frames[0].w : 64;
+    s->ship_h = (a && a->nframes) ? a->frames[0].h : 32;
     s->spr = tex(tex_id);
 
     s->en.e.x = x;
     s->en.e.y = SPEC_WORLD_WATER_Y - s->ship_h;
-    double dir = (fp_random() * 0.1) + 0.2;
+    real dir = (fp_random() * 0.1) + 0.2;
     ent_set_hspeed(&s->en.e, fp_rand(2) ? dir : -dir);
     return s;
 }
 
 /* Boot — battleship (Interaction/Enemies/Boot.as) */
-Entity *boot_spawn(double x)
+Entity *boot_spawn(real x)
 {
     Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/boot/ship", LAYER_BEHIND);
     if (!s) return NULL;
@@ -159,7 +162,7 @@ Entity *boot_spawn(double x)
 }
 
 /* Bootje — boat (Interaction/Enemies/Bootje.as) */
-Entity *bootje_spawn(double x)
+Entity *bootje_spawn(real x)
 {
     Sea *s = sea_new(ETYPE_ENEMY, x, "image/interaction/enemies/bootje/ship", LAYER_BEHIND);
     if (!s) return NULL;

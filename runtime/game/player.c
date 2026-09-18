@@ -10,22 +10,22 @@
 
 typedef struct {
     Entity e;
-    double health;
-    double turn;
+    real health;
+    real turn;
     int    can_shoot;
-    double shake;
+    real shake;
     bool   is_boosting;
     bool   just_spawned;
-    double body_angle;
-    double wings_scale_y;
+    real body_angle;
+    real wings_scale_y;
     GfxTex *body, *wings, *boost, *boost_start;
 } Player;
 
 POOL(player_pool, Player, 2)
 static void player_recycle(Entity *e) { player_pool_put(e->user); }
 
-static double space_y(void) { return SPEC_WORLD_SPACE_Y; }
-static double water_y(void) { return SPEC_WORLD_WATER_Y; }
+static real space_y(void) { return SPEC_WORLD_SPACE_Y; }
+static real water_y(void) { return SPEC_WORLD_WATER_Y; }
 
 /* Player.as step 4 — one shot per (cooldown+1) frames while FIRE held. */
 static void do_shooting(Player *p)
@@ -40,13 +40,13 @@ static void do_shooting(Player *p)
 }
 
 /* raw health change — no shake (Boot/Bootje body contact, underwater) */
-void player_health_delta(Entity *e, double d)
+void player_health_delta(Entity *e, real d)
 {
     Player *p = e->user;
     p->health += d;
 }
 
-double player_health(Entity *e) { return ((Player *)e->user)->health; }
+real player_health(Entity *e) { return ((Player *)e->user)->health; }
 
 /* Player.as:380 getDamage(amount) */
 void player_getdamage(Entity *e, int amount)
@@ -154,18 +154,18 @@ static void update_normal(Player *p)
     {
         fp_vec lead = {0, 0};
         fp_angle_xy(&lead, p->body_angle, ent_speed(e) * SPEC_PLAYER_CAMERA_LEAD_MULT, 0, 0);
-        double tx = e->x - fp_half_width + lead.x;
-        double ty = e->y - fp_half_height + lead.y;
-        double s = p->shake;
+        real tx = e->x - fp_half_width + lead.x;
+        real ty = e->y - fp_half_height + lead.y;
+        real s = p->shake;
         fp_camera.x = tx + (tx - fp_camera.x) * SPEC_PLAYER_CAMERA_FOLLOW_LERP
-                    + (double)fp_rand((uint32_t)s) - s / 2.0;
+                    + (real)fp_rand((uint32_t)s) - s / 2.0;
         fp_camera.y = ty + (ty - fp_camera.y) * SPEC_PLAYER_CAMERA_FOLLOW_LERP
-                    + (double)fp_rand((uint32_t)s) - s / 2.0;
+                    + (real)fp_rand((uint32_t)s) - s / 2.0;
     }
 
     /* 12. damage smoke + repair while not firing (Player.as:314-326) */
     if (p->health > 0 && p->health < SPEC_PLAYER_INIT_HEALTH) {
-        if ((double)fp_rand(10) > p->health)
+        if ((real)fp_rand(10) > p->health)
             fx_smoke(e->x, e->y, fp_rand(360), fp_random() * ((10.0 - p->health) / 4.0));
         if (!in_down(ACT_FIRE))
             p->health += SPEC_PLAYER_DAMAGE_REGEN_PER_FRAME;
@@ -188,7 +188,7 @@ static void update_normal(Player *p)
     else p->shake = 0;
 
     /* 15. wings squash */
-    p->wings_scale_y = sin(FP_RAD * p->body_angle);
+    p->wings_scale_y = rsin(FP_RAD * p->body_angle);
 
     /* 16. */
     ent_update(e);
@@ -216,7 +216,7 @@ static void player_render(Entity *e)
                  0xFFFFFF, 0, 0, 16, 16);
 }
 
-Entity *player_spawn(double px, double py)
+Entity *player_spawn(real px, real py)
 {
     Player *p = player_pool_get();
     if (!p) return NULL;
@@ -235,7 +235,7 @@ Entity *player_spawn(double px, double py)
     p->shake = SPEC_PLAYER_INIT_SHAKE;
     p->just_spawned = true;
     p->body_angle = SPEC_PLAYER_INIT_SPAWN_ANGLE;
-    p->wings_scale_y = sin(FP_RAD * p->body_angle);
+    p->wings_scale_y = rsin(FP_RAD * p->body_angle);
     ent_set_vspeed(&p->e, SPEC_PLAYER_INIT_SPAWN_VSPEED);
     ent_set_hitbox(&p->e, SPEC_PLAYER_INIT_HITBOX_W, SPEC_PLAYER_INIT_HITBOX_H,
                    SPEC_PLAYER_INIT_HITBOX_OX, SPEC_PLAYER_INIT_HITBOX_OY);

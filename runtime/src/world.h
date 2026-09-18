@@ -14,6 +14,11 @@ typedef struct World {
        is safe (FlashPunk semantics). */
     Entity *pending[WORLD_MAX];
     int pending_count;
+    /* optional: entities with layer > clip_layer (drawn first) are clipped to
+       above clip_world_y — the water surface hides everything beneath it. */
+    bool   clip_on;
+    int    clip_layer;
+    real clip_world_y;
 } World;
 
 void    world_init(World *w);
@@ -30,6 +35,6 @@ Entity  *world_first_type(World *w, EntityType t);
    whose centre is furthest from `from` (NULL if none) */
 Entity  *world_furthest_type(World *w, EntityType t, const Entity *from);
 /* returns the first live entity of type `t` whose hitbox overlaps (a placed at ax,ay) */
-Entity  *world_collide(World *w, EntityType t, Entity *a, double ax, double ay);
+Entity  *world_collide(World *w, EntityType t, Entity *a, real ax, real ay);
 
 #endif

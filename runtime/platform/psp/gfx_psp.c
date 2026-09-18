@@ -32,6 +32,10 @@ struct GfxTex {
 typedef struct { float u, v; unsigned int color; float x, y, z; } Vtx;
 
 static GfxTex *g_bound;     /* currently-bound texture (bind cache) */
+int gfx_dbg_nocap, gfx_dbg_skipdraw;
+unsigned long long gfx_dbg_sync_us;
+static void batch_flush(void);
+static bool g_model_ident;  /* GU model matrix is known to be identity */
 
 static unsigned int rgb_to_abgr(unsigned int rgb)
 {
@@ -85,24 +89,31 @@ void gfx_frame_begin(uint32_t rgb)
     sceGumOrtho(0, SCR_W, SCR_H, 0, -1, 1);
     sceGumMatrixMode(GU_VIEW);
     sceGumLoadIdentity();
+    sceGumMatrixMode(GU_MODEL);
+    sceGumLoadIdentity();
+    g_model_ident = true;
 
     g_bound = NULL;
 }
 
-/* Cap render rate at ~45fps (< the PSP LCD's 60Hz) to save battery: fewer
+/* Cap render rate (60 = one vblank per frame; lower it to save battery): fewer
  * display swaps and less GU work per second, at a frame rate still well above
  * the game's own fixed 30Hz sim. Achieved by waiting a fractional number of
  * vblanks per frame (60/45 = 1.333) via an accumulator, so the average is
  * exact rather than a rough over/under approximation. */
-#define TARGET_FPS   45.0
+#define TARGET_FPS   60.0
 #define DISPLAY_HZ   60.0
 
 void gfx_frame_end(void)
 {
+    batch_flush();
     sceGuFinish();
+    unsigned long long s0 = sceKernelGetSystemTimeWide();
     sceGuSync(0, 0);
+    gfx_dbg_sync_us += sceKernelGetSystemTimeWide() - s0;
+    if (gfx_dbg_nocap) { sceGuSwapBuffers(); return; }
 
-    static double vblank_acc = 0.0;
+    static real vblank_acc = 0.0;
     vblank_acc += DISPLAY_HZ / TARGET_FPS;
     int waits = (int)vblank_acc;
     if (waits < 1) waits = 1;
@@ -144,19 +155,54 @@ GfxTex *gfx_tex_from_pixels(const uint16_t *px, int w, int h)
     return tex_alloc((const uint8_t *)px, w, h, 0);     /* font atlas: linear */
 }
 
+#define BATCH_MAX 256
+static Vtx g_batch[BATCH_MAX * 6];
+static int g_nquads;
+
+static void batch_flush(void)
+{
+    if (!g_nquads) return;
+    Vtx *v = sceGuGetMemory(g_nquads * 6 * sizeof(Vtx));
+    memcpy(v, g_batch, g_nquads * 6 * sizeof(Vtx));
+    sceGumUpdateMatrix();
+    sceGuDrawArray(GU_TRIANGLES,
+        GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+        g_nquads * 6, 0, v);
+    g_nquads = 0;
+}
+
 static void bind(GfxTex *t)
 {
     if (t == g_bound) return;
+    batch_flush();
     sceGuTexMode(GU_PSM_5551, 0, 0, t->swizzled ? GU_TRUE : GU_FALSE);
     sceGuTexImage(0, t->tw, t->th, t->tw, t->pixels);
     g_bound = t;
 }
 
-void gfx_draw(GfxTex *t, double x, double y, double angle,
-              double ox, double oy, double sx, double sy, uint32_t tint,
+/* GUM's rotation direction, measured once: rotate identity by +90deg and read
+ * where +X went. Keeps CPU rotation matching the known-good GUM path exactly. */
+static float rot_sign(void)
+{
+    static float sign = 0.0f;
+    if (sign == 0.0f) {
+        ScePspFMatrix4 m;
+        sceGumMatrixMode(GU_MODEL);
+        sceGumLoadIdentity();
+        sceGumRotateZ(1.5707963f);
+        sceGumUpdateMatrix();
+        sceGumStoreMatrix(&m);
+        sceGumLoadIdentity();
+        sign = m.x.y >= 0.0f ? 1.0f : -1.0f;
+    }
+    return sign;
+}
+
+void gfx_draw(GfxTex *t, real x, real y, real angle,
+              real ox, real oy, real sx, real sy, uint32_t tint,
               int fx, int fy, int fw, int fh)
 {
-    if (!t) return;
+    if (!t || gfx_dbg_skipdraw) return;
 
     float screenx = (float)(x - fp_camera.x);
     float screeny = (float)(y - fp_camera.y);
@@ -167,25 +213,24 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
      * sprites, never a visible one. This is the fix for the 20+-enemy stutter:
      * enemies/bullets/FX spawn and travel well outside the 480x272 view. */
     {
-        float dsx = (float)fabs(sx), dsy = (float)fabs(sy);
-        float margin = (float)(fw + fh) * (dsx > dsy ? dsx : dsy) + 8.0f;
-        if (screenx + margin < 0 || screenx - margin > SCR_W ||
-            screeny + margin < 0 || screeny - margin > SCR_H)
-            return;
+        float dsx = (float)rfabs(sx), dsy = (float)rfabs(sy);
+        if (angle == 0.0) {
+            /* exact rect test for unrotated sprites */
+            float x0 = screenx - (float)ox * dsx, y0 = screeny - (float)oy * dsy;
+            if (x0 + fw * dsx <= 0 || x0 >= SCR_W ||
+                y0 + fh * dsy <= 0 || y0 >= SCR_H)
+                return;
+        } else {
+            float margin = (float)(fw + fh) * (dsx > dsy ? dsx : dsy) + 8.0f;
+            if (screenx + margin < 0 || screenx - margin > SCR_W ||
+                screeny + margin < 0 || screeny - margin > SCR_H)
+                return;
+        }
     }
 
     bind(t);
 
-    sceGumMatrixMode(GU_MODEL);
-    sceGumLoadIdentity();
-    ScePspFVector3 tr = { screenx, screeny, 0.0f };
-    sceGumTranslate(&tr);
-    if (angle != 0.0) sceGumRotateZ((float)(angle * FP_RAD));
-    if (sx != 1.0 || sy != 1.0) {
-        ScePspFVector3 sc = { (float)fabs(sx), (float)fabs(sy), 1.0f };
-        sceGumScale(&sc);
-    }
-
+    float dsx = (float)rfabs(sx), dsy = (float)rfabs(sy);
     float l = (float)-ox, tp = (float)-oy;
     float r = (float)(fw - ox), b = (float)(fh - oy);
     float u0 = (float)fx / t->tw, v0 = (float)fy / t->th;
@@ -193,15 +238,47 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
     if (sx < 0) { float s = u0; u0 = u1; u1 = s; }
     if (sy < 0) { float s = v0; v0 = v1; v1 = s; }
     unsigned int col = rgb_to_abgr(tint);
+    float rx_[4], ry_[4];
+    bool rotated = false;
 
-    Vtx *v = sceGuGetMemory(4 * sizeof(Vtx));
-    v[0] = (Vtx){ u0, v0, col, l, tp, 0 };
-    v[1] = (Vtx){ u0, v1, col, l, b,  0 };
-    v[2] = (Vtx){ u1, v0, col, r, tp, 0 };
-    v[3] = (Vtx){ u1, v1, col, r, b,  0 };
-    sceGumDrawArray(GU_TRIANGLE_STRIP,
-        GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
-        4, 0, v);
+    if (angle == 0.0) {
+        /* Unrotated (the vast majority: text glyphs, water/space tiles, clouds,
+         * most FX): place the quad's corners on the CPU and draw with an
+         * identity model matrix — skips the per-sprite GUM matrix-stack work. */
+        if (!g_model_ident) {
+            sceGumMatrixMode(GU_MODEL);
+            sceGumLoadIdentity();
+            g_model_ident = true;
+        }
+        l = screenx + l * dsx;  r = screenx + r * dsx;
+        tp = screeny + tp * dsy; b = screeny + b * dsy;
+    } else {
+        /* Rotated: also CPU-transformed, identity model matrix. */
+        if (!g_model_ident) {
+            sceGumMatrixMode(GU_MODEL);
+            sceGumLoadIdentity();
+            g_model_ident = true;
+        }
+        float a = (float)(angle * FP_RAD);
+        float c = cosf(a), sn = rot_sign() * sinf(a);
+        float lx = l * dsx, rx = r * dsx, ty = tp * dsy, by = b * dsy;
+        float ax[4] = { lx, lx, rx, rx }, ay[4] = { ty, by, ty, by };
+        for (int i = 0; i < 4; i++) {
+            rx_[i] = screenx + ax[i] * c - ay[i] * sn;
+            ry_[i] = screeny + ax[i] * sn + ay[i] * c;
+        }
+        rotated = true;
+    }
+
+    float X[4], Y[4];
+    if (rotated) { memcpy(X, rx_, sizeof X); memcpy(Y, ry_, sizeof Y); }
+    else { X[0] = X[1] = l; X[2] = X[3] = r; Y[0] = Y[2] = tp; Y[1] = Y[3] = b; }
+    Vtx q0 = { u0, v0, col, X[0], Y[0], 0 }, q1 = { u0, v1, col, X[1], Y[1], 0 };
+    Vtx q2 = { u1, v0, col, X[2], Y[2], 0 }, q3 = { u1, v1, col, X[3], Y[3], 0 };
+    if (g_nquads == BATCH_MAX) batch_flush();
+    Vtx *o = &g_batch[g_nquads++ * 6];
+    o[0] = q0; o[1] = q1; o[2] = q2;
+    o[3] = q2; o[4] = q1; o[5] = q3;
 }
 
 /* Per-tile draws through the normal (CLAMP-sampled) gfx_draw path — NOT a
@@ -212,12 +289,30 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
  * surfacing submarine appeared to float in front of the water instead of
  * being masked by it. Water/space are only 2 entities, so the extra draw
  * calls here are not a real perf concern. */
-void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
+void gfx_draw_tiled(GfxTex *t, real x, real y, int span_w, int span_h)
 {
     if (!t) return;
-    for (int ty = 0; ty < span_h; ty += t->th)
-        for (int tx = 0; tx < span_w; tx += t->tw)
+    /* whole band off-screen vertically -> nothing to submit; otherwise only
+     * the rows/columns that intersect the screen. */
+    float top = (float)(y - fp_camera.y), left = (float)(x - fp_camera.x);
+    if (top >= SCR_H || top + span_h <= 0) return;
+    int ty0 = top < 0 ? ((int)(-top) / t->th) * t->th : 0;
+    int tx0 = left < 0 ? ((int)(-left) / t->tw) * t->tw : 0;
+    for (int ty = ty0; ty < span_h && top + ty < SCR_H; ty += t->th)
+        for (int tx = tx0; tx < span_w && left + tx < SCR_W; tx += t->tw)
             gfx_draw(t, x + tx, y + ty, 0, 0, 0, 1, 1, 0xFFFFFF, 0, 0, t->tw, t->th);
 }
+
+/* sceGuScissor's last two args are the (exclusive) bottom-right corner. */
+void gfx_clip_below(real world_y)
+{
+    batch_flush();
+    int sy = (int)rfloor(world_y - fp_camera.y);
+    if (sy < 0) sy = 0;
+    if (sy > SCR_H) sy = SCR_H;
+    sceGuScissor(0, 0, SCR_W, sy);
+}
+
+void gfx_clip_reset(void) { batch_flush(); sceGuScissor(0, 0, SCR_W, SCR_H); }
 
 bool gfx_save_bmp(const char *path) { (void)path; return false; }

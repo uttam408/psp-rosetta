@@ -5,13 +5,13 @@
 #include "pool.h"
 #include "../src/audio.h"
 
-static double player_x(void)
+static real player_x(void)
 {
     Entity *p = world_first_type(&g_game.world, ETYPE_PLAYER);
     return p ? p->x : 0;
 }
 
-static void splash(double x)
+static void splash(real x)
 {
     fx_anim_bottom("image/interaction/fx/watersplash/splash", x, SPEC_WORLD_WATER_Y, 0.3);
 }
@@ -48,7 +48,7 @@ static void bullet_render(Entity *e)
     if (b->t) gfx_draw(b->t, e->x, e->y, 0, 8, 8, 1, 1, 0xFFFFFF, 0, 0, 16, 16);
 }
 
-Entity *bullet_spawn(double x, double y, double angle)
+Entity *bullet_spawn(real x, real y, real angle)
 {
     Bullet *b = bullet_pool_get();
     if (!b) return NULL;
@@ -70,7 +70,7 @@ Entity *bullet_spawn(double x, double y, double angle)
 }
 
 /* --- enemy EBullet ------------------------------------------------------- */
-typedef struct { Entity e; int life; const PakAsset *a; GfxTex *t; double fr; } EBullet;
+typedef struct { Entity e; int life; const PakAsset *a; GfxTex *t; real fr; } EBullet;
 POOL(ebullet_pool, EBullet, 128)
 static void ebullet_recycle(Entity *e) { ebullet_pool_put(e->user); }
 
@@ -100,7 +100,7 @@ static void ebullet_render(Entity *e)
              r.x, r.y, r.w, r.h);
 }
 
-Entity *ebullet_spawn(double x, double y, double angle, double speed)
+Entity *ebullet_spawn(real x, real y, real angle, real speed)
 {
     EBullet *b = ebullet_pool_get();
     if (!b) return NULL;

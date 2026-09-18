@@ -21,7 +21,17 @@ void text_init(void)
                     (bits & (1u << col)) ? 0xFFFF : 0x0000;   /* white / clear */
         }
     }
+    for (int row = 0; row < 8; row++)      /* cell 127 (DEL): solid block for text_fill */
+        for (int col = 0; col < 8; col++)
+            px[(7 * GLYPH + row) * ATLAS_W + (15 * GLYPH + col)] = 0xFFFF;
     g_font = gfx_tex_from_pixels(px, ATLAS_W, ATLAS_H);
+}
+
+void text_fill(real sx, real sy, real w, real h, uint32_t rgb)
+{
+    if (!g_font) return;
+    gfx_draw(g_font, fp_camera.x + sx, fp_camera.y + sy, 0, 0, 0,
+             w / GLYPH, h / GLYPH, rgb, 15 * GLYPH, 7 * GLYPH, GLYPH, GLYPH);
 }
 
 static int line_len(const char *s)
@@ -43,14 +53,14 @@ int text_width(const char *s)
     return best * GLYPH;
 }
 
-void text_draw(const char *s, double sx, double sy, uint32_t rgb, int align)
+void text_draw(const char *s, real sx, real sy, uint32_t rgb, int align)
 {
     if (!g_font) return;
-    double lx = sx, ly = sy;
+    real lx = sx, ly = sy;
     const char *p = s;
     while (*p) {
         int n = line_len(p);
-        double x = lx;
+        real x = lx;
         if (align == TEXT_CENTER) x = lx - n * GLYPH / 2.0;
         else if (align == TEXT_RIGHT) x = lx - n * GLYPH;
         for (int i = 0; i < n; i++) {

@@ -3,6 +3,7 @@
  * difficulty, scoring, HUD, game-over timeline (TODO — port-spec §2,§5,§6,§7). */
 #include "game.h"
 #include "text.h"
+#include "logo_data.h"
 #include "../src/input.h"
 #include "../src/audio.h"
 #include <stdio.h>
@@ -13,6 +14,41 @@
 
 static float g_fps;
 void game_set_fps(float fps) { g_fps = fps; }
+
+/* Boot splash: the PSPRosetta logo fades in, holds, fades out (any button skips).
+ * Platform-enabled (PSP) so the headless SDL screenshot tests are unaffected. */
+#define SPLASH_IN    20
+#define SPLASH_HOLD  45
+#define SPLASH_OUT   25
+static int g_splash = -1;                 /* -1 = off, else ticks elapsed */
+static GfxTex *g_logo;
+
+void game_splash_start(void)
+{
+    g_logo = gfx_tex_from_pixels(logo_px, LOGO_TEX_W, LOGO_TEX_H);
+    g_splash = g_logo ? 0 : -1;
+}
+
+static void splash_tick(void)
+{
+    if (in_pressed(ACT_FIRE) || in_pressed(ACT_THRUST) || in_pressed(ACT_START) ||
+        ++g_splash >= SPLASH_IN + SPLASH_HOLD + SPLASH_OUT)
+        g_splash = -1;
+}
+
+static void splash_draw(void)
+{
+    int t = g_splash;
+    int lvl = 255;
+    if (t < SPLASH_IN) lvl = t * 255 / SPLASH_IN;
+    else if (t >= SPLASH_IN + SPLASH_HOLD) lvl = (SPLASH_IN + SPLASH_HOLD + SPLASH_OUT - t) * 255 / SPLASH_OUT;
+    if (lvl < 0) lvl = 0;
+    uint32_t tint = (uint32_t)lvl * 0x010101u;
+    gfx_frame_begin(0x000000);
+    gfx_draw(g_logo, fp_camera.x + (fp_width - LOGO_W) / 2, fp_camera.y + (fp_height - LOGO_H) / 2,
+             0, 0, 0, 1, 1, tint, 0, 0, LOGO_W, LOGO_H);
+    gfx_frame_end();
+}
 
 /* --- high score (SharedObject "Luftrauser" / "Highscore" -> a 4-byte file) -- */
 static int hiscore_load(void)
@@ -59,6 +95,9 @@ void game_start(void)
     world_clear(&g_game.world);          /* recycle the previous game's entities */
     memset(&g_game, 0, sizeof g_game);
     world_init(&g_game.world);
+    g_game.world.clip_on = true;
+    g_game.world.clip_layer = LAYER_WATER;
+    g_game.world.clip_world_y = SPEC_WORLD_WATER_Y;
     fp_seed(1);   /* TODO: match FlashPunk's seed init for replay parity */
     g_game.high_score = hi;
 
@@ -71,7 +110,7 @@ void game_start(void)
 /* Game.as:372-377 — 2 Brits + start the spawn loop */
 void game_begin_combat(void)
 {
-    double w = fp_width;
+    real w = fp_width;
     for (int i = 0; i < SPEC_SPAWN_FIRST_BRITS; i++)
         brit_spawn(fp_choose2(fp_camera.x - SPEC_SPAWN_SPAWN_X_OFFSCREEN,
                               fp_camera.x + w + SPEC_SPAWN_SPAWN_X_OFFSCREEN),
@@ -84,14 +123,14 @@ void game_begin_combat(void)
 static void spawn_more_enemies(void)
 {
     g_game.t_spawn = 30 + (int)fp_rand(60);            /* re-arm 30-89 frames  */
-    double sx = fp_choose2(fp_camera.x - 500, fp_camera.x + fp_width + 500);
-    double sy = 100 + fp_rand(500);
+    real sx = fp_choose2(fp_camera.x - 500, fp_camera.x + fp_width + 500);
+    real sy = 100 + fp_rand(500);
     g_game.game_hard += SPEC_DIFFICULTY_GAMEHARD_PER_TICK;
 
     int live = world_count_type(&g_game.world, ETYPE_ENEMY);
     if (live >= g_game.game_hard || live >= SPEC_DIFFICULTY_ENEMY_COUNT_CAP) return;
 
-    double gh = g_game.game_hard;
+    real gh = g_game.game_hard;
     int cls;
     if (gh < 3)       cls = 0;
     else if (gh < 7)  { const int c[] = {0, 0, 1};             cls = c[fp_rand(3)]; }
@@ -113,6 +152,7 @@ static void spawn_more_enemies(void)
 
 void game_tick(void)
 {
+    if (g_splash >= 0) { splash_tick(); return; }
     if (in_pressed(ACT_START) && !g_game.game_over)
         g_game.paused = !g_game.paused;
     if (g_game.paused) return;                     /* freeze the sim entirely */
@@ -156,10 +196,11 @@ static void hud(void)
 
     snprintf(buf, sizeof buf, "%d FPS  %d ENT",
              (int)(g_fps + 0.5f), world_count(&g_game.world));
-    text_draw(buf, fp_width - 8, 8, HUD_RGB, TEXT_RIGHT);
+    text_fill(fp_width - 8 - text_width(buf) - 3, 5, text_width(buf) + 6, 14, 0x1F2A9C);
+    text_draw(buf, fp_width - 8, 8, 0xFFFFFF, TEXT_RIGHT);
 
     if (g_game.game_over) {
-        double cx = fp_half_width, cy = fp_half_height - 40;
+        real cx = fp_half_width, cy = fp_half_height - 40;
         text_draw("GAME OVER", cx, cy, HUD_RGB, TEXT_CENTER);
         snprintf(buf, sizeof buf,
                  "KILLS %d\nPLANES %d   JETS %d\nBOAT %d   SHIP %d",
@@ -174,7 +215,7 @@ static void hud(void)
     }
 
     if (attract) {
-        double cx = fp_half_width;
+        real cx = fp_half_width;
         text_draw("PRESS UP TO LAUNCH", cx, 70, HUD_RGB, TEXT_CENTER);
         text_draw("ARROWS + X    RELEASE X TO REPAIR", cx, 86, BLURB_RGB, TEXT_CENTER);
         snprintf(buf, sizeof buf, "BEST %d", g_game.high_score);
@@ -194,6 +235,7 @@ static void hud(void)
 
 void game_draw(void)
 {
+    if (g_splash >= 0) { splash_draw(); return; }
     gfx_frame_begin(SPEC_ENGINE_CLEAR_RGB);
     world_render(&g_game.world);
     hud();

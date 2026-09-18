@@ -9,9 +9,9 @@
 
 typedef struct {
     Enemy   en;
-    double  myspeed;
+    real  myspeed;
     int     t_shoot;
-    double  body_angle, wings_scale_y;
+    real  body_angle, wings_scale_y;
     GfxTex *body, *wings;
 } Jet;
 
@@ -19,7 +19,7 @@ POOL(jet_pool, Jet, 80)
 static void jet_recycle(Entity *e) { jet_pool_put(e->user); }
 
 static Entity *player_e(void) { return world_first_type(&g_game.world, ETYPE_PLAYER); }
-static double  roll_speed(void) { return 14.0 + fp_rand(4); }
+static real  roll_speed(void) { return 14.0 + fp_rand(4); }
 
 static void jet_shoot(Jet *j)
 {
@@ -42,8 +42,8 @@ static void jet_update(Entity *e)
 
     Entity *pl = player_e();
     if (pl) {
-        double tx = pl->x + (double)fp_rand(10) - 5;
-        double ty = pl->y + (double)fp_rand(20) - 10;
+        real tx = pl->x + (real)fp_rand(10) - 5;
+        real ty = pl->y + (real)fp_rand(20) - 10;
         ent_motion_add(e, fp_angle(e->x, e->y, tx, ty), 0.2);
         if (fp_distance(e->x, e->y, pl->x, pl->y) > 900) {
             j->myspeed = roll_speed();
@@ -59,7 +59,7 @@ static void jet_update(Entity *e)
         }
     }
 
-    j->wings_scale_y = sin(FP_RAD * j->body_angle);
+    j->wings_scale_y = rsin(FP_RAD * j->body_angle);
 
     if (e->y > SPEC_WORLD_WATER_Y - 100) ent_set_vspeed(e, ent_vspeed(e) - 0.3);
     if (e->y > SPEC_WORLD_WATER_Y - 40)  ent_set_vspeed(e, ent_vspeed(e) - 0.7);
@@ -85,7 +85,7 @@ static void jet_render(Entity *e)
                  0xFFFFFF, 0, 0, 16, 16);
 }
 
-Entity *jet_spawn(double x, double y)
+Entity *jet_spawn(real x, real y)
 {
     Jet *j = jet_pool_get();
     if (!j) return NULL;

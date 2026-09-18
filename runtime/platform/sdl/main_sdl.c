@@ -9,6 +9,7 @@
 #include "../../src/audio.h"
 #include "../../src/gfx.h"
 #include "../../game/game.h"
+#include "../../game/fx.h"
 
 /* headless capture: --shot <ticks> <out.bmp> [inputscript]
  * inputscript: one char/tick, last char repeats — T thrust, L left, R right,
@@ -132,6 +133,29 @@ static int run_shot2(int ticks, const char *out, const char *script, bool seq)
         for (int i = 0; i < 100; i++) game_tick();
         for (int i = 0; i < 4; i++)
             jet_spawn(fp_camera.x + 120 + i * 90, 500 + (i & 1) * 30);
+    }
+    if (SDL_strncmp(script, "!SPLASH", 7) == 0) {
+        game_splash_start();
+        for (int i = 0; i < ticks; i++) game_tick();
+        game_draw();
+        return gfx_save_bmp(out) ? 0 : 2;
+    }
+    if (SDL_strncmp(script, "!BENCH", 6) == 0) {   /* debug: CPU cost at ~300 entities */
+        for (int i = 0; i < 100; i++) game_tick();
+        for (int i = 0; i < 60; i++) brit_spawn(fp_camera.x + 40 + (i % 12) * 30, fp_camera.y + 20 + (i / 12) * 30);
+        for (int i = 0; i < 30; i++) jet_spawn(fp_camera.x + 40 + (i % 10) * 40, fp_camera.y + 150 + (i / 10) * 20);
+        for (int i = 0; i < 90; i++) ebullet_spawn(fp_camera.x + 20 + (i % 30) * 15, fp_camera.y + 60 + (i / 30) * 40, i * 12, 0.5);
+        for (int i = 0; i < 90; i++) fx_smoke(fp_camera.x + 20 + (i % 30) * 15, fp_camera.y + 100 + (i / 30) * 30, i * 7, 0.3);
+        printf("bench: %d entities\n", world_count(&g_game.world));
+        double f = (double)SDL_GetPerformanceFrequency();
+        Uint64 t0 = SDL_GetPerformanceCounter();
+        for (int i = 0; i < 200; i++) game_tick();
+        Uint64 t1 = SDL_GetPerformanceCounter();
+        for (int i = 0; i < 200; i++) game_draw();
+        Uint64 t2 = SDL_GetPerformanceCounter();
+        printf("bench: %d ents at end | tick %.3f ms | draw %.3f ms\n",
+               world_count(&g_game.world), (t1 - t0) * 1000.0 / f / 200, (t2 - t1) * 1000.0 / f / 200);
+        return 0;
     }
     size_t sl = SDL_strlen(script);
     int saved = 0;

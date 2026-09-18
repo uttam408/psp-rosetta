@@ -7,7 +7,7 @@ typedef struct {
     Entity e;
     const PakAsset *a;
     GfxTex *t;
-    double frame, rate;
+    real frame, rate;
     bool   bottom_pin;   /* true: bottom edge sits at y (water-surface FX) */
 } Anim;
 
@@ -29,12 +29,12 @@ static void anim_render(Entity *e)
     if (i < 0) i = 0;
     if (i >= an->a->nframes) i = an->a->nframes - 1;
     PakRect r = an->a->frames[i];
-    double oy = an->bottom_pin ? r.h : r.h / 2.0;
+    real oy = an->bottom_pin ? r.h : r.h / 2.0;
     gfx_draw(an->t, e->x, e->y, 0, r.w / 2.0, oy, 1, 1, 0xFFFFFF,
              r.x, r.y, r.w, r.h);
 }
 
-static Entity *anim_spawn(const char *tex_id, double x, double y, double rate, bool bottom_pin)
+static Entity *anim_spawn(const char *tex_id, real x, real y, real rate, bool bottom_pin)
 {
     Anim *an = anim_pool_get();
     if (!an) return NULL;
@@ -53,14 +53,14 @@ static Entity *anim_spawn(const char *tex_id, double x, double y, double rate, b
     return world_add(&g_game.world, &an->e);
 }
 
-Entity *fx_anim(const char *tex_id, double x, double y, double rate)
+Entity *fx_anim(const char *tex_id, real x, real y, real rate)
 {
     return anim_spawn(tex_id, x, y, rate, false);
 }
 
 /* WaterSplash/BigWaterSplash.as: "bottom pinned to water line" — the sprite
  * rises up out of the surface instead of straddling it. */
-Entity *fx_anim_bottom(const char *tex_id, double x, double y, double rate)
+Entity *fx_anim_bottom(const char *tex_id, real x, real y, real rate)
 {
     return anim_spawn(tex_id, x, y, rate, true);
 }
@@ -94,8 +94,8 @@ static void part_render(Entity *e)
              r.x, r.y, r.w, r.h);
 }
 
-Entity *fx_part(const char *tex_id, double x, double y,
-                double toss_angle, double toss_speed, int life)
+Entity *fx_part(const char *tex_id, real x, real y,
+                real toss_angle, real toss_speed, int life)
 {
     Part *p = part_pool_get();
     if (!p) return NULL;
@@ -113,7 +113,7 @@ Entity *fx_part(const char *tex_id, double x, double y,
     p->frame = p->a && p->a->nframes ? (int)fp_rand(p->a->nframes) : 0;
     p->life = life;
     ent_motion_add(&p->e, toss_angle, toss_speed);
-    ent_set_vspeed(&p->e, ent_vspeed(&p->e) - (double)fp_rand(2));
+    ent_set_vspeed(&p->e, ent_vspeed(&p->e) - (real)fp_rand(2));
     return world_add(&g_game.world, &p->e);
 }
 
@@ -137,7 +137,7 @@ static void blurb_render(Entity *e)
     if (t) gfx_draw(t, e->x, e->y, 0, 8, 8, 0.5, 0.5, 0x610C1D, 0, 0, 16, 16);
 }
 
-Entity *fx_blurb(int amount, double x, double y)
+Entity *fx_blurb(int amount, real x, real y)
 {
     Blurb *b = blurb_pool_get();
     if (!b) return NULL;
@@ -161,7 +161,7 @@ typedef struct {
     Entity e;
     const PakAsset *a;
     GfxTex *t;
-    double frame;
+    real frame;
 } Smoke;
 
 POOL(smoke_pool, Smoke, 96)
@@ -186,7 +186,7 @@ static void smoke_render(Entity *e)
              r.x, r.y, r.w, r.h);
 }
 
-Entity *fx_smoke(double x, double y, double angle, double speed)
+Entity *fx_smoke(real x, real y, real angle, real speed)
 {
     Smoke *s = smoke_pool_get();
     if (!s) return NULL;
