@@ -64,6 +64,7 @@ void game_start(void)
 
     g_game.space = backdrop_spawn_space();
     g_game.water = backdrop_spawn_water();
+    for (int i = 0; i < 6; i++) cloud_spawn();   /* Game ctor: 6 background clouds */
     uboot_spawn();
 }
 

@@ -53,6 +53,7 @@ Entity *brit_spawn(double x, double y);
 Entity *jet_spawn(double x, double y);
 Entity *boot_spawn(double x);      /* battleship */
 Entity *bootje_spawn(double x);    /* boat */
+Entity *cloud_spawn(void);
 
 void player_getdamage(Entity *player, int amount);   /* Player.as:380 getDamage */
 void player_health_delta(Entity *player, double d);  /* raw, no shake */
