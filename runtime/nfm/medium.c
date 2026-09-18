@@ -11,14 +11,37 @@ int g_polys_in, g_polys_drawn;
 
 /* ---- Java numeric helpers ------------------------------------------------ */
 
-static int jint(double v)            /* (int)double: truncate, NaN->0, saturate */
+static int jint_d(double v)          /* (int)double: truncate, NaN->0, saturate */
 {
     if (v != v) return 0;
     if (v >= 2147483647.0) return 2147483647;
     if (v <= -2147483648.0) return (int)-2147483648.0;
     return (int)v;
 }
+/* same for float arguments: float->double is exact, so results are identical, but this
+ * avoids soft-float double compares on the PSP (hot: per-vertex rotation) */
+static int jint_f(float v)
+{
+    if (v != v) return 0;
+    if (v >= 2147483648.0f) return 2147483647;
+    if (v <= -2147483648.0f) return (int)-2147483648.0;
+    return (int)v;
+}
+#define jint(x) _Generic((x), float: jint_f, default: jint_d)(x)
 static int iabs(int v) { return v < 0 ? -v : v; }
+
+/* jint(sqrt((double)n)) without soft-float doubles (the PSP FPU is single precision):
+ * exact floor(sqrt(n)); negative n is NaN in Java, which jint maps to 0 */
+static int isqrt_n(int n)
+{
+    if (n <= 0) return 0;
+    int r = (int)sqrtf((float)n);
+    while ((long long)r * r > n) r--;
+    while ((long long)(r + 1) * (r + 1) <= n) r++;
+    return r;
+}
+/* (float)(sqrt((double)n) / 100.0) in single precision (may differ from Java in the last ulp) */
+static float sqrt100f(int n) { return sqrtf((float)n) / 100.0f; }
 static int clamp255(int v) { return v > 255 ? 255 : v < 0 ? 0 : v; }
 
 float m_sin(int d) { while (d >= 360) d -= 360; while (d < 0) d += 360; return NTSIN[d]; }
@@ -325,8 +348,8 @@ static void calc_deltaf_typ(const PMesh *mesh, const PmPoly *p, float *deltaf, u
     float d = 1.0f, pj = 1.0f;
     for (int i = 0; i < 3; i++)
         for (int j = 0; j < 3; j++) if (j != i) {
-            d  *= (float)(sqrt((double)((ox[j]-ox[i])*(ox[j]-ox[i]) + (oy[j]-oy[i])*(oy[j]-oy[i]) + (oz[j]-oz[i])*(oz[j]-oz[i]))) / 100.0);
-            pj *= (float)(sqrt((double)((ox[i]-ox[j])*(ox[i]-ox[j]) + (oz[i]-oz[j])*(oz[i]-oz[j]))) / 100.0);
+            d  *= sqrt100f((ox[j]-ox[i])*(ox[j]-ox[i]) + (oy[j]-oy[i])*(oy[j]-oy[i]) + (oz[j]-oz[i])*(oz[j]-oz[i]));
+            pj *= sqrt100f((ox[i]-ox[j])*(ox[i]-ox[j]) + (oz[i]-oz[j])*(oz[i]-oz[j]));
         }
     *deltaf = d / 3.0f;
     *projf = pj / 3.0f;
@@ -400,7 +423,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         float pj = 1.0f;
         for (int i = 0; i < 3; i++)
             for (int j = 0; j < 3; j++) if (j != i)
-                pj *= (float)(sqrt((double)((ax[i]-ax[j])*(ax[i]-ax[j]) + (az[i]-az[j])*(az[i]-az[j]))) / 100.0);
+                pj *= sqrt100f((ax[i]-ax[j])*(ax[i]-ax[j]) + (az[i]-az[j])*(az[i]-az[j]));
         o->projf[pi] = pj / 3.0f;
     }
     rot(m, ax, az, m->cx, m->cz, m->xz, N);
@@ -417,7 +440,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
                 n43 = i; n42 = j; n40 = iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]);
             }
     if (sy25[n42] < sy25[n43]) { int t = n42; n42 = n43; n43 = t; }
-#define SPY(i) jint(sqrt((double)((ax[i] - m->cx) * (ax[i] - m->cx) + az[i] * az[i])))
+#define SPY(i) isqrt_n((ax[i] - m->cx) * (ax[i] - m->cx) + az[i] * az[i])
     if (SPY(n42) > SPY(n43)) {
         b2 = true;
         int same = 0;
@@ -477,7 +500,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
             if (az[i] > zmx) zmx = az[i]; if (az[i] < zmn) zmn = az[i];
         }
         int cy = (ymx + ymn) / 2, cx = (xmx + xmn) / 2, czz = (zmx + zmn) / 2;
-        o->av[pi] = jint(sqrt((double)((m->cy - cy) * (m->cy - cy) + (m->cx - cx) * (m->cx - cx) + czz * czz + gr * gr * gr)));
+        o->av[pi] = isqrt_n((m->cy - cy) * (m->cy - cy) + (m->cx - cx) * (m->cx - cx) + czz * czz + gr * gr * gr);
         int av = o->av[pi];
         if (m->trk == 0 && (av > m->fade[disline] || av == 0)) vis = false;
         if (lastmaf == -111 && av > 4500 && !road) vis = false;

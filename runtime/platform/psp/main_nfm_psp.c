@@ -94,7 +94,7 @@ int main(void)
     bool loaded = false;
     Frame f = { W, H, g_px };
     unsigned long long tlast = sceKernelGetSystemTimeWide();
-    int frames = 0; float fps = 0;
+    int frames = 0; float fps = 0; unsigned long long acc_draw = 0, acc_blit = 0;
 
     while (g_running) {
         if (!loaded || want) {
@@ -137,10 +137,14 @@ int main(void)
         if (b & PSP_CTRL_CIRCLE) med.y -= sp;
 
         g_polys_in = g_polys_drawn = 0;
+        unsigned long long t_a = sceKernelGetSystemTimeWide();
         scene_draw(&med, &sc);
+        unsigned long long t_b = sceKernelGetSystemTimeWide();
 
         uint32_t *fb = vram[cur];
         blit(fb);
+        unsigned long long t_c = sceKernelGetSystemTimeWide();
+        acc_draw += t_b - t_a; acc_blit += t_c - t_b;
         if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
@@ -155,7 +159,7 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s %.1f fps %d polys\n", g_names[stage_i], fps, g_polys_drawn); fflush(log); }
+            if (log) { fprintf(log, "%s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
             frames = 0; tlast = now;
         }
     }
