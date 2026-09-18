@@ -73,8 +73,11 @@ int main(void)
 
     { FILE *z = fopen("nfm_boot.txt", "w"); if (z) fclose(z); }
     step("start, free mem %u, max block %u", (unsigned)sceKernelTotalFreeMemSize(), (unsigned)sceKernelMaxFreeMemSize());
-    scePowerSetClockFrequency(333, 333, 166);
-    step("clock set: cpu %d bus %d", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency());
+    sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+    SceCtrlData p0; sceCtrlReadBufferPositive(&p0, 1);
+    int fast = (p0.Buttons & PSP_CTRL_RTRIGGER) != 0;
+    if (fast) scePowerSetClockFrequency(333, 333, 166);   /* default stays at the system's 222 */
+    step("clock (R held at launch = 333): cpu %d bus %d", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency());
     pspDebugScreenInit();
     pspDebugScreenPrintf("NFM viewer starting...\n");
     if (!pak_open("assets.pak")) {
@@ -165,7 +168,7 @@ int main(void)
 
         g_polys_in = g_polys_drawn = 0;
         unsigned long long t_a = sceKernelGetSystemTimeWide();
-        if (first) { g_trace_f = fopen("nfm_trace.txt", "w"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
+        if (first) { { FILE *z = fopen("nfm_trace.txt", "w"); if (z) { for (int k = 0; k < 64; k++) fputc(' ', z); fclose(z); } } g_trace_f = fopen("nfm_trace.txt", "r+"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
         scene_draw(&med, &sc);
         if (first) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         unsigned long long t_b = sceKernelGetSystemTimeWide();
