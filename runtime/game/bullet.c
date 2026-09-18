@@ -13,7 +13,7 @@ static double player_x(void)
 
 static void splash(double x)
 {
-    fx_anim("image/interaction/fx/watersplash/splash", x, SPEC_WORLD_WATER_Y, 0.3);
+    fx_anim_bottom("image/interaction/fx/watersplash/splash", x, SPEC_WORLD_WATER_Y, 0.3);
 }
 
 /* --- player Bullet -------------------------------------------------------- */

@@ -8,6 +8,7 @@ typedef struct {
     const PakAsset *a;
     GfxTex *t;
     double frame, rate;
+    bool   bottom_pin;   /* true: bottom edge sits at y (water-surface FX) */
 } Anim;
 
 POOL(anim_pool, Anim, 192)
@@ -28,11 +29,12 @@ static void anim_render(Entity *e)
     if (i < 0) i = 0;
     if (i >= an->a->nframes) i = an->a->nframes - 1;
     PakRect r = an->a->frames[i];
-    gfx_draw(an->t, e->x, e->y, 0, r.w / 2.0, r.h / 2.0, 1, 1, 0xFFFFFF,
+    double oy = an->bottom_pin ? r.h : r.h / 2.0;
+    gfx_draw(an->t, e->x, e->y, 0, r.w / 2.0, oy, 1, 1, 0xFFFFFF,
              r.x, r.y, r.w, r.h);
 }
 
-Entity *fx_anim(const char *tex_id, double x, double y, double rate)
+static Entity *anim_spawn(const char *tex_id, double x, double y, double rate, bool bottom_pin)
 {
     Anim *an = anim_pool_get();
     if (!an) return NULL;
@@ -47,7 +49,20 @@ Entity *fx_anim(const char *tex_id, double x, double y, double rate)
     an->a = pak_find(tex_id);
     an->t = tex(tex_id);
     an->rate = rate;
+    an->bottom_pin = bottom_pin;
     return world_add(&g_game.world, &an->e);
+}
+
+Entity *fx_anim(const char *tex_id, double x, double y, double rate)
+{
+    return anim_spawn(tex_id, x, y, rate, false);
+}
+
+/* WaterSplash/BigWaterSplash.as: "bottom pinned to water line" — the sprite
+ * rises up out of the surface instead of straddling it. */
+Entity *fx_anim_bottom(const char *tex_id, double x, double y, double rate)
+{
+    return anim_spawn(tex_id, x, y, rate, true);
 }
 
 /* ------------------------------------------------------------------ fx_part */

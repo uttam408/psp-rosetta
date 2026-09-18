@@ -148,7 +148,7 @@ static void update_normal(Player *p)
        3-frame anim doesn't stack into a white wall at 30 fps */
     if ((fp_frame % 3) == 0 &&
         fp_distance(e->x, e->y, e->x, water_y()) < SPEC_PLAYER_WATER_SPLASH_DIST)
-        fx_anim("image/interaction/fx/watersplash/splash", e->x, water_y(), 0.3);
+        fx_anim_bottom("image/interaction/fx/watersplash/splash", e->x, water_y(), 0.3);
 
     /* 11. camera follow (Player.as:305-313) */
     {

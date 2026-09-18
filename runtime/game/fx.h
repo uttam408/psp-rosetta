@@ -7,6 +7,10 @@
 /* one-shot animation that removes itself when the Spritemap completes */
 Entity *fx_anim(const char *tex_id, double x, double y, double rate);
 
+/* same, but the sprite's bottom edge is pinned to y instead of centering on
+ * it — for WaterSplash/BigWaterSplash, which rise up out of the surface. */
+Entity *fx_anim_bottom(const char *tex_id, double x, double y, double rate);
+
 /* a debris part: random frame, ballistic motion, gravity, dies after `life` frames */
 Entity *fx_part(const char *tex_id, double x, double y,
                 double toss_angle, double toss_speed, int life);
