@@ -2,11 +2,12 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "gen/ntrig_table.h"
 
 int g_polys_in, g_polys_drawn;
 
-#define MAXN 24
+#define MAXN 64          /* largest polygon in the game is 28 verts (stage lettering); warn beyond this */
 
 /* ---- Java numeric helpers ------------------------------------------------ */
 
@@ -166,11 +167,11 @@ static void fill_poly(Frame *f, const V2 *v, int n, uint32_t color)
 {
     float ymin = v[0].y, ymax = v[0].y;
     for (int i = 1; i < n; i++) { if (v[i].y < ymin) ymin = v[i].y; if (v[i].y > ymax) ymax = v[i].y; }
-    int y0 = (int)ceilf(ymin - 0.5f), y1 = (int)floorf(ymax - 0.5f);
+    int y0 = (int)ceilf(ymin - 0.25f), y1 = (int)floorf(ymax - 0.25f);
     if (y0 < 0) y0 = 0;
     if (y1 >= f->h) y1 = f->h - 1;
     for (int y = y0; y <= y1; y++) {
-        float sy = y + 0.5f, xs[MAXN];
+        float sy = y + 0.25f, xs[MAXN];
         int nx = 0;
         for (int i = 0, j = n - 1; i < n; j = i++) {
             const V2 *a = &v[j], *b = &v[i];
@@ -183,7 +184,7 @@ static void fill_poly(Frame *f, const V2 *v, int n, uint32_t color)
             xs[j + 1] = t;
         }
         for (int i = 0; i + 1 < nx; i += 2) {
-            int xa = (int)ceilf(xs[i] - 0.5f), xb = (int)floorf(xs[i + 1] - 0.5f);
+            int xa = (int)ceilf(xs[i] - 0.25f), xb = (int)ceilf(xs[i + 1] - 0.25f) - 1;
             if (xa < 0) xa = 0;
             if (xb >= f->w) xb = f->w - 1;
             uint32_t *row = f->px + (size_t)y * f->w;
@@ -376,7 +377,8 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     const PMesh *mesh = o->mesh;
     const PmPoly *P = &mesh->polys[pi];
     const int N = P->nverts;
-    if (N < 3 || N > MAXN) return;
+    if (N > MAXN) { fprintf(stderr, "plane: %d-vertex polygon exceeds MAXN\n", N); return; }
+    if (N < 3) return;
     int ax[MAXN], az[MAXN], ay[MAXN];
     for (int i = 0; i < N; i++) {
         const PmVert *s = &mesh->verts[mesh->indices[P->first_index + i]];
@@ -448,7 +450,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
                 if (iabs(py[i] - py[j]) > d4) d4 = iabs(py[i] - py[j]);
             }
         if (d3 == 0 || d4 == 0) vis = false;
-        else if (d3 < 3 && d4 < 3 && ((n6 / d3 > 15 && n6 / d4 > 15) || b)) vis = false;
+        else if (d3 < 3 && d4 < 3 && ((n6 / d3 > 15 && n6 / d4 > 15) || b) && (!m->lightson || light == 0)) vis = false;
     }
     if (vis) {
         int lastmaf = 1, gr = gr0;
@@ -518,7 +520,20 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
             }
     fill_ipoly(m, px, py, N, r, g, bl);
     g_polys_drawn++;
-    if (!b && !solo) outline_ipoly(m, px, py, N, 0x000000);
+    if (!b) {
+        if (!solo) {
+            uint32_t oc = 0;                /* lit stages: outline is half the poly's own colour */
+            if (m->lightson && light != 0)
+                oc = (uint32_t)clamp255(P->r / 2) << 16 | (uint32_t)clamp255(P->g / 2) << 8 | (uint32_t)clamp255(P->b / 2);
+            outline_ipoly(m, px, py, N, oc);
+        }
+    } else if (road && av <= 3000 && m->trk == 0 && m->fade[0] > 4000) {
+        /* near road polys are outlined a touch darker than their (fogged) fill */
+        r -= 10; if (r < 0) r = 0;
+        g -= 10; if (g < 0) g = 0;
+        bl -= 10; if (bl < 0) bl = 0;
+        outline_ipoly(m, px, py, N, (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)bl);
+    }
     (void)glass;
 }
 

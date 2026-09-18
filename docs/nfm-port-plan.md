@@ -159,8 +159,18 @@ which is how the trig table below was checked.
 - **Procyon artifact.** `n11 *= (int)0.991` in `Medium.d` is `(int)(n11 * 0.991)` in the
   original; read literally it paints the upper sky black. Expect more of these
   (`int op= double`) in `Mad`.
-- **Deviation from the original:** none deliberate yet, but the fill is centre-sampled
-  scanline, not Java2D's `fillPolygon` rule, so edge pixels can differ.
+- **Java2D fill rule.** `fillPolygon` normalises vertices by +0.25 px and fills
+  left-inclusive/right-exclusive; `fill_poly` now does the same. `drawLine` is plain Bresenham
+  and matches exactly (0/6000 random segments differ).
+- **Java oracle** (`tools/nfm_oracle/`, `tools/nfm_diff.py`): the original renderer runs
+  headless on JDK 26 with `Madness`/`GameSparker`/`CheckPoints` stubbed, so stage renders can be
+  pixel-diffed. Stage 1 (camera 0,-1200, yaw 0, pitch 10) is at 0.84% differing pixels, mean
+  channel error 0.10, bottom third exact. What remains: the checkpoint ring (`gr==-10` random
+  flicker, unported) and the horizon line. Two more Procyon artifacts turned up and are fixed
+  in the oracle copies (see its README). Random self-intersecting polygons still differ 998/3000
+  from Java2D (sliver cases); real geometry does not show it.
+- **Outline rules** ported: `!b` -> black (or half colour when lit), road polygons near the
+  camera get a fill-10 outline. Polygons up to 64 vertices (stage lettering has 28).
 - **`pile` is `Plane` glass==3**: raw colour (no snap, +0.05 saturation), `gr=-8` (full brightness), drawn `noline`, ground y=250. Its collision trackers are not built yet (needed at M5).
 - **Not ported (cosmetic, `Math.random`-driven):** damage bend/shatter, chips, dust, sparks.
 

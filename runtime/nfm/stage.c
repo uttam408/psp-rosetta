@@ -139,18 +139,23 @@ void scene_free(Scene *sc)
 
 static Inst **g_order; static uint32_t g_ocap;
 
+/* GameSparker's loop: objects whose dist is 0 (culled last frame) draw first in index
+ * order; the rest draw far to near, and equal distances draw the higher index first. */
 static int by_dist_desc(const void *a, const void *b)
 {
-    int da = (*(Inst *const *)a)->dist, db = (*(Inst *const *)b)->dist;
-    return (da < db) - (da > db);
+    const Inst *x = *(Inst *const *)a, *y = *(Inst *const *)b;
+    if (x->dist != y->dist) return (x->dist < y->dist) - (x->dist > y->dist);
+    return (x < y) - (x > y);            /* instances live in one array, so address order = index order */
 }
 
 void scene_draw(Medium *m, Scene *sc)
 {
     medium_draw_backdrop(m);
     if (sc->n > g_ocap) { g_ocap = sc->n; g_order = realloc(g_order, g_ocap * sizeof *g_order); }
-    for (uint32_t i = 0; i < sc->n; i++) g_order[i] = &sc->inst[i];
-    /* far to near by last frame's dist; qsort isn't stable but the original's ties are cosmetic */
-    qsort(g_order, sc->n, sizeof *g_order, by_dist_desc);
-    for (uint32_t i = 0; i < sc->n; i++) inst_draw(m, g_order[i]);
+    uint32_t nd = 0;
+    for (uint32_t i = 0; i < sc->n; i++)
+        if (sc->inst[i].dist == 0) inst_draw(m, &sc->inst[i]);
+        else g_order[nd++] = &sc->inst[i];
+    qsort(g_order, nd, sizeof *g_order, by_dist_desc);
+    for (uint32_t i = 0; i < nd; i++) inst_draw(m, g_order[i]);
 }

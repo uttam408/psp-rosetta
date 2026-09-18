@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "../src/pak.h"
 #include "pmesh.h"
 #include "medium.h"
@@ -54,8 +55,10 @@ static int stage_main(int argc, char **argv)
     Stage st;
     if (!a || !stage_load(&st, a->data, a->size)) { fprintf(stderr, "bad or missing stage: %s\n", argv[2]); return 1; }
 
-    static uint32_t px[W * H];
-    Frame f = { W, H, px };
+    static uint32_t px[W * H], pxf[800 * 450];
+    bool full = false;                 /* --full: native 800x450, for pixel diffs against the Java oracle */
+    for (int i = 3; i < argc; i++) if (strcmp(argv[i], "--full") == 0) full = true;
+    Frame f = full ? (Frame){ 800, 450, pxf } : (Frame){ W, H, px };
     Medium med;
     medium_init(&med, &f);
     stage_apply_env(&st, &med);
@@ -71,7 +74,8 @@ static int stage_main(int argc, char **argv)
         if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) {
             shot = true; out = argv[++i];
             int *v[] = { &camx, &camz, &yaw, &pitch, &height };
-            for (int k = 0; k < 5 && i + 1 < argc && argv[i + 1][0] != '-'; k++) *v[k] = atoi(argv[++i]);
+            for (int k = 0; k < 5 && i + 1 < argc && (isdigit((unsigned char)argv[i + 1][0]) || (argv[i + 1][0] == '-' && isdigit((unsigned char)argv[i + 1][1]))); k++)
+                *v[k] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--bench") == 0) bench = true;
     }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
