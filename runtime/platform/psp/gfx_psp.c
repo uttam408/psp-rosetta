@@ -156,6 +156,24 @@ static void bind(GfxTex *t)
     g_bound = t;
 }
 
+/* GUM's rotation direction, measured once: rotate identity by +90deg and read
+ * where +X went. Keeps CPU rotation matching the known-good GUM path exactly. */
+static float rot_sign(void)
+{
+    static float sign = 0.0f;
+    if (sign == 0.0f) {
+        ScePspFMatrix4 m;
+        sceGumMatrixMode(GU_MODEL);
+        sceGumLoadIdentity();
+        sceGumRotateZ(1.5707963f);
+        sceGumUpdateMatrix();
+        sceGumStoreMatrix(&m);
+        sceGumLoadIdentity();
+        sign = m.x.y >= 0.0f ? 1.0f : -1.0f;
+    }
+    return sign;
+}
+
 void gfx_draw(GfxTex *t, double x, double y, double angle,
               double ox, double oy, double sx, double sy, uint32_t tint,
               int fx, int fy, int fw, int fh)
@@ -188,6 +206,8 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
     if (sx < 0) { float s = u0; u0 = u1; u1 = s; }
     if (sy < 0) { float s = v0; v0 = v1; v1 = s; }
     unsigned int col = rgb_to_abgr(tint);
+    float rx_[4], ry_[4];
+    bool rotated = false;
 
     if (angle == 0.0) {
         /* Unrotated (the vast majority: text glyphs, water/space tiles, clouds,
@@ -201,23 +221,35 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
         l = screenx + l * dsx;  r = screenx + r * dsx;
         tp = screeny + tp * dsy; b = screeny + b * dsy;
     } else {
-        sceGumMatrixMode(GU_MODEL);
-        sceGumLoadIdentity();
-        ScePspFVector3 tr = { screenx, screeny, 0.0f };
-        sceGumTranslate(&tr);
-        sceGumRotateZ((float)(angle * FP_RAD));
-        if (sx != 1.0 || sy != 1.0) {
-            ScePspFVector3 sc = { dsx, dsy, 1.0f };
-            sceGumScale(&sc);
+        /* Rotated: also CPU-transformed, identity model matrix. */
+        if (!g_model_ident) {
+            sceGumMatrixMode(GU_MODEL);
+            sceGumLoadIdentity();
+            g_model_ident = true;
         }
-        g_model_ident = false;
+        float a = (float)(angle * FP_RAD);
+        float c = cosf(a), sn = rot_sign() * sinf(a);
+        float lx = l * dsx, rx = r * dsx, ty = tp * dsy, by = b * dsy;
+        float ax[4] = { lx, lx, rx, rx }, ay[4] = { ty, by, ty, by };
+        for (int i = 0; i < 4; i++) {
+            rx_[i] = screenx + ax[i] * c - ay[i] * sn;
+            ry_[i] = screeny + ax[i] * sn + ay[i] * c;
+        }
+        rotated = true;
     }
 
     Vtx *v = sceGuGetMemory(4 * sizeof(Vtx));
-    v[0] = (Vtx){ u0, v0, col, l, tp, 0 };
-    v[1] = (Vtx){ u0, v1, col, l, b,  0 };
-    v[2] = (Vtx){ u1, v0, col, r, tp, 0 };
-    v[3] = (Vtx){ u1, v1, col, r, b,  0 };
+    if (rotated) {
+        v[0] = (Vtx){ u0, v0, col, rx_[0], ry_[0], 0 };
+        v[1] = (Vtx){ u0, v1, col, rx_[1], ry_[1], 0 };
+        v[2] = (Vtx){ u1, v0, col, rx_[2], ry_[2], 0 };
+        v[3] = (Vtx){ u1, v1, col, rx_[3], ry_[3], 0 };
+    } else {
+        v[0] = (Vtx){ u0, v0, col, l, tp, 0 };
+        v[1] = (Vtx){ u0, v1, col, l, b,  0 };
+        v[2] = (Vtx){ u1, v0, col, r, tp, 0 };
+        v[3] = (Vtx){ u1, v1, col, r, b,  0 };
+    }
     sceGumDrawArray(GU_TRIANGLE_STRIP,
         GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
         4, 0, v);
