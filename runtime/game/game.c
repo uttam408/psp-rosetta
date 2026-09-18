@@ -196,7 +196,7 @@ static void hud(void)
 
     snprintf(buf, sizeof buf, "%d FPS  %d ENT",
              (int)(g_fps + 0.5f), world_count(&g_game.world));
-    text_fill(fp_width - 8 - text_width(buf) - 3, 5, text_width(buf) + 6, 14, 0xC85A5A);
+    text_fill(fp_width - 8 - text_width(buf) - 3, 5, text_width(buf) + 6, 14, 0xE07A8A);
     text_draw(buf, fp_width - 8, 8, 0xFFFFFF, TEXT_RIGHT);
 
     if (g_game.game_over) {
