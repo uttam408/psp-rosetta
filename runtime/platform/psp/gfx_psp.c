@@ -32,6 +32,7 @@ struct GfxTex {
 typedef struct { float u, v; unsigned int color; float x, y, z; } Vtx;
 
 static GfxTex *g_bound;     /* currently-bound texture (bind cache) */
+static void batch_flush(void);
 static bool g_model_ident;  /* GU model matrix is known to be identity */
 
 static unsigned int rgb_to_abgr(unsigned int rgb)
@@ -103,6 +104,7 @@ void gfx_frame_begin(uint32_t rgb)
 
 void gfx_frame_end(void)
 {
+    batch_flush();
     sceGuFinish();
     sceGuSync(0, 0);
 
@@ -148,9 +150,26 @@ GfxTex *gfx_tex_from_pixels(const uint16_t *px, int w, int h)
     return tex_alloc((const uint8_t *)px, w, h, 0);     /* font atlas: linear */
 }
 
+#define BATCH_MAX 256
+static Vtx g_batch[BATCH_MAX * 6];
+static int g_nquads;
+
+static void batch_flush(void)
+{
+    if (!g_nquads) return;
+    Vtx *v = sceGuGetMemory(g_nquads * 6 * sizeof(Vtx));
+    memcpy(v, g_batch, g_nquads * 6 * sizeof(Vtx));
+    sceGumUpdateMatrix();
+    sceGuDrawArray(GU_TRIANGLES,
+        GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+        g_nquads * 6, 0, v);
+    g_nquads = 0;
+}
+
 static void bind(GfxTex *t)
 {
     if (t == g_bound) return;
+    batch_flush();
     sceGuTexMode(GU_PSM_5551, 0, 0, t->swizzled ? GU_TRUE : GU_FALSE);
     sceGuTexImage(0, t->tw, t->th, t->tw, t->pixels);
     g_bound = t;
@@ -238,21 +257,15 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
         rotated = true;
     }
 
-    Vtx *v = sceGuGetMemory(4 * sizeof(Vtx));
-    if (rotated) {
-        v[0] = (Vtx){ u0, v0, col, rx_[0], ry_[0], 0 };
-        v[1] = (Vtx){ u0, v1, col, rx_[1], ry_[1], 0 };
-        v[2] = (Vtx){ u1, v0, col, rx_[2], ry_[2], 0 };
-        v[3] = (Vtx){ u1, v1, col, rx_[3], ry_[3], 0 };
-    } else {
-        v[0] = (Vtx){ u0, v0, col, l, tp, 0 };
-        v[1] = (Vtx){ u0, v1, col, l, b,  0 };
-        v[2] = (Vtx){ u1, v0, col, r, tp, 0 };
-        v[3] = (Vtx){ u1, v1, col, r, b,  0 };
-    }
-    sceGumDrawArray(GU_TRIANGLE_STRIP,
-        GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
-        4, 0, v);
+    float X[4], Y[4];
+    if (rotated) { memcpy(X, rx_, sizeof X); memcpy(Y, ry_, sizeof Y); }
+    else { X[0] = X[1] = l; X[2] = X[3] = r; Y[0] = Y[2] = tp; Y[1] = Y[3] = b; }
+    Vtx q0 = { u0, v0, col, X[0], Y[0], 0 }, q1 = { u0, v1, col, X[1], Y[1], 0 };
+    Vtx q2 = { u1, v0, col, X[2], Y[2], 0 }, q3 = { u1, v1, col, X[3], Y[3], 0 };
+    if (g_nquads == BATCH_MAX) batch_flush();
+    Vtx *o = &g_batch[g_nquads++ * 6];
+    o[0] = q0; o[1] = q1; o[2] = q2;
+    o[3] = q2; o[4] = q1; o[5] = q3;
 }
 
 /* Per-tile draws through the normal (CLAMP-sampled) gfx_draw path — NOT a
@@ -274,12 +287,13 @@ void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
 /* sceGuScissor's last two args are the (exclusive) bottom-right corner. */
 void gfx_clip_below(double world_y)
 {
+    batch_flush();
     int sy = (int)floor(world_y - fp_camera.y);
     if (sy < 0) sy = 0;
     if (sy > SCR_H) sy = SCR_H;
     sceGuScissor(0, 0, SCR_W, sy);
 }
 
-void gfx_clip_reset(void) { sceGuScissor(0, 0, SCR_W, SCR_H); }
+void gfx_clip_reset(void) { batch_flush(); sceGuScissor(0, 0, SCR_W, SCR_H); }
 
 bool gfx_save_bmp(const char *path) { (void)path; return false; }
