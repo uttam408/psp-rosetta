@@ -18,7 +18,8 @@ make setup          # venv + Pillow  (needs python3, ffmpeg on PATH)
 ```sh
 # 1. get a source directory
 #    Luftrauser: decompile the SWF with JPEXS -> "Export all parts" -> <export dir>
-#    NFM:        clone a released/decompiled NFM source tree
+#    NFM:        clone a decompiled NFM source tree (catb0t/need-for-madness-source),
+#                point --src at its root; see docs/nfm-port-plan.md
 
 # 2. run the pipeline
 .venv/bin/python -m pipeline.cli build --game luftrauser --src <export-dir>
@@ -57,15 +58,22 @@ pipeline/
   adapters/
     base.py           Adapter ABC + crawl() (dedupe, sort)
     flash.py          JPEXS export dir  -> IR
-    java.py           NFM source tree   -> IR   (partial: media yes, meshes stubbed)
+    java.py           NFM source tree   -> IR   (unpacks models/images/sounds/music zips, stages)
+  nfm/
+    rad.py            .rad model parser (float32-exact vs ContO.java)
+    pmesh.py          .pmesh runtime model format (pack/unpack)
+    stage.py          stage .txt parser
+    tables.py         car / track-piece names and stage-id mapping
   convert/
     textures.py       image -> .ptx  (POT, PSP swizzle, RGBA8888/5551/4444/IDX8)
     audio.py          audio -> .pcm (sfx) / .ogg (music) via ffmpeg
-    models.py         mesh  -> passthrough  (STUB)
+    models.py         NFM .rad -> .pmesh
+    data.py           NFM stage -> .stage.json; other data passthrough
   pack.py             build assets.pak + manifest
 games/<game>/game.toml  per-game adapter + conversion settings
 ```
 
 ## Not done yet
 
-Runtime (C/C++), `.vag` audio, NFM mesh parsing, verification harness — see PROJECT.md.
+NFM runtime (C), `.vag` audio, NFM fidelity harness — see PROJECT.md and
+[docs/nfm-port-plan.md](docs/nfm-port-plan.md). (The Luftrauser runtime exists.)

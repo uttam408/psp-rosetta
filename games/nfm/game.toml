@@ -1,26 +1,40 @@
 # Need for Madness? (Omar Waly / Radical Play, 2005) — Java applet, software 3D.
-# Source: a released / decompiled NFM source tree (e.g. catb0t/need-for-madness-source).
-# Point `crawl --src` at the tree root.
+# Source: a decompiled NFM tree (catb0t/need-for-madness-source works). Point
+# `crawl --src` at the tree root (the directory that contains OBJ/).
+#
+#   .venv/bin/python -m pipeline.cli build --game nfm --src <tree> --keep-going
+#
+# See docs/nfm-port-plan.md.
 
 [game]
 name = "Need for Madness?"
 adapter = "java"
 
+[crawl]
+exclude = []
+
 [screen]
-native = [800, 600]
+# The 3D viewport is Medium.w x Medium.h = 800x450 (centre 400,225); the applet
+# chrome around it is menus/HUD. 800x450 is 16:9, so 480x270 is a uniform 0.6x
+# scale and fits the PSP's 480x272 with a 2px letterbox.
+native = [800, 450]
 target = [480, 272]
 
 [convert.textures]
-max_size = 128        # NFM textures are small; keep VRAM budget sane
-format = "rgba8888"
+# NFM's 3D is untextured flat-shaded polys; images are HUD/menu GIFs (max 128px).
+# GIF transparency is 1-bit, so 5551 is lossless for alpha and halves VRAM.
+max_size = 128
+format = "rgba5551"
 swizzle = true
 pot = true
 
 [convert.audio]
+# sfx are short WAVs. PSP audio hardware is fixed at 44.1 kHz, but the runtime mixer
+# can upsample; keep the on-disk size down.
 sample_rate = 22050
 music_sample_rate = 32000
 music_bitrate = "80k"
 music_min_seconds = 12.0
 
 [convert.models]
-# placeholder — NFM text model format not parsed yet
+# .rad -> .pmesh needs no settings; every model in models.zip is converted as-is.
