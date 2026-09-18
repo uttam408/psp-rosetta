@@ -196,7 +196,7 @@ static void hud(void)
 
     snprintf(buf, sizeof buf, "%d FPS  %d ENT",
              (int)(g_fps + 0.5f), world_count(&g_game.world));
-    text_draw(buf, fp_width - 8, 8, HUD_RGB, TEXT_RIGHT);
+    text_draw(buf, fp_width - 8, 8, 0x00FF00, TEXT_RIGHT);
 
     if (g_game.game_over) {
         real cx = fp_half_width, cy = fp_half_height - 40;
