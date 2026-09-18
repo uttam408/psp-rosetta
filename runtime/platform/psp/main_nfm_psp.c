@@ -2,7 +2,7 @@
  *   assets.pak is read from the EBOOT's directory.
  *   Analog stick: move (Ly) / strafe (Lx).  D-pad L/R: turn.  D-pad U/D: pitch.
  *   Cross/Circle: camera down/up.  Square: fast.  L/R trigger: previous/next stage.
- *   Start: toggle fps overlay.  fps/poly stats are also appended to nfm_log.txt. */
+ *   Select: cycle draw distance 100/80/60/40/20%.  Start: toggle fps overlay.  fps/poly stats are also appended to nfm_log.txt. */
 #include <pspkernel.h>
 #include <pspdebug.h>
 #include <pspdisplay.h>
@@ -82,7 +82,7 @@ int main(void)
 
     uint32_t *vram[2] = { (uint32_t *)(0x40000000 | (uintptr_t)sceGeEdramGetAddr()),
                           (uint32_t *)(0x40000000 | ((uintptr_t)sceGeEdramGetAddr() + FBSZ)) };
-    int cur = 0, stage_i = 0, want = 0, overlay = 1;
+    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100;
     unsigned prevb = 0;
     FILE *log = fopen("nfm_log.txt", "w");
 
@@ -104,6 +104,7 @@ int main(void)
             if (!loaded) { want = 1; continue; }
             medium_init(&med, &f);
             stage_apply_env(&st, &med);
+            med.far_pct = far_pct;
             scene_build(&sc, &st, &med);
             int camx = 0, camz = 0;
             if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
@@ -120,6 +121,7 @@ int main(void)
         if (edge & PSP_CTRL_LTRIGGER) want = -1;
         if (edge & PSP_CTRL_RTRIGGER) want = 1;
         if (edge & PSP_CTRL_START) overlay = !overlay;
+        if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = (b & PSP_CTRL_SQUARE) ? 120 : 40;
         int fwd = -ay * sp / 128, side = ax * sp / 128;
@@ -144,7 +146,7 @@ int main(void)
         if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
-            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys ", g_names[stage_i], fps, g_polys_drawn, g_polys_in);
+            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct);
         }
         sceDisplayWaitVblankStart();
         /* topaddr must be the real VRAM address: 0 means "disable display" */
@@ -155,7 +157,7 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
+            if (log) { fprintf(log, "%s far %d %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
             frames = 0; tlast = now;
         }
     }

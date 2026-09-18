@@ -100,6 +100,7 @@ void medium_init(Medium *m, Frame *f)
 {
     memset(m, 0, sizeof *m);
     m->focus_point = 400; m->ground = 250; m->skyline = -300;
+    m->far_pct = 100;
     for (int i = 0; i < 16; i++) m->fade[i] = 3000 + 1500 * i;
     int osky[3] = { 170, 220, 255 }, grnd[3] = { 205, 200, 200 }, cpol[3] = { 215, 210, 210 }, cf[3] = { 255, 220, 220 };
     for (int i = 0; i < 3; i++) {
@@ -406,6 +407,34 @@ void inst_free(Inst *o)
 }
 
 /* Plane.d for the static case (no damage, wheels, chips or flicker) */
+/* b2: polygon faces away from the camera (spy comparison of its flattest edge); ay/az are pre-pitch */
+static bool facing_away(const Medium *m, const int *ax, const int *ay, const int *az, int N)
+{
+    bool b2 = false;
+    int sx24[MAXN], sy25[MAXN];
+    int n40 = 500;
+    for (int i = 0; i < N; i++) { sx24[i] = m_xs(m, ax[i], az[i]); sy25[i] = m_ys(m, ay[i], az[i]); }
+    int n42 = 0, n43 = 1;
+    for (int i = 0; i < N; i++)
+        for (int j = i; j < N; j++)
+            if (i != j && iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]) < n40) {
+                n43 = i; n42 = j; n40 = iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]);
+            }
+    if (sy25[n42] < sy25[n43]) { int t = n42; n42 = n43; n43 = t; }
+#define SPY(i) isqrt_n((ax[i] - m->cx) * (ax[i] - m->cx) + az[i] * az[i])
+    if (SPY(n42) > SPY(n43)) {
+        b2 = true;
+        int same = 0;
+        for (int i = 0; i < N; i++) {
+            if (az[i] < 50 && ay[i] > m->cy) b2 = false;
+            else if (ay[i] == ay[0]) same++;
+        }
+        if (same == N && ay[0] > m->cy) b2 = false;
+    }
+#undef SPY
+    return b2;
+}
+
 static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, int cxz, int cxy, int czy,
                        bool noline, int n6)
 {
@@ -440,42 +469,28 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     }
     rot(m, ax, az, m->cx, m->cz, m->xz, N);
 
-    /* b2: polygon faces away from the camera (spy comparison of its flattest edge) */
-    bool b2 = false;
-    int sx24[MAXN], sy25[MAXN];
-    int n40 = 500;
-    for (int i = 0; i < N; i++) { sx24[i] = m_xs(m, ax[i], az[i]); sy25[i] = m_ys(m, ay[i], az[i]); }
-    int n42 = 0, n43 = 1;
-    for (int i = 0; i < N; i++)
-        for (int j = i; j < N; j++)
-            if (i != j && iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]) < n40) {
-                n43 = i; n42 = j; n40 = iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]);
-            }
-    if (sy25[n42] < sy25[n43]) { int t = n42; n42 = n43; n43 = t; }
-#define SPY(i) isqrt_n((ax[i] - m->cx) * (ax[i] - m->cx) + az[i] * az[i])
-    if (SPY(n42) > SPY(n43)) {
-        b2 = true;
-        int same = 0;
-        for (int i = 0; i < N; i++) {
-            if (az[i] < 50 && ay[i] > m->cy) b2 = false;
-            else if (ay[i] == ay[0]) same++;
-        }
-        if (same == N && ay[0] > m->cy) b2 = false;
-    }
-#undef SPY
-    rot(m, ay, az, m->cy, m->cz, m->zy, N);
-
+    /* screen-visibility first, on pitch-rotated copies: behind-camera / off-screen polygons leave
+     * here before the (expensive) facing test.  Java updates Plane.av only after this point too. */
+    int pay[MAXN], paz[MAXN];
+    memcpy(pay, ay, N * sizeof(int)); memcpy(paz, az, N * sizeof(int));
+    rot(m, pay, paz, m->cy, m->cz, m->zy, N);
     int px[MAXN], py[MAXN];
     int c50 = 0, c51 = 0, c52 = 0, c53 = 0, c54 = 0;
     for (int i = 0; i < N; i++) {
-        px[i] = m_xs(m, ax[i], az[i]); py[i] = m_ys(m, ay[i], az[i]);
-        if (py[i] < m->ih || az[i] < 10) c50++;
-        if (py[i] > m->h  || az[i] < 10) c51++;
-        if (px[i] < m->iw || az[i] < 10) c52++;
-        if (px[i] > m->w  || az[i] < 10) c53++;
-        if (az[i] < 10) c54++;
+        px[i] = m_xs(m, ax[i], paz[i]); py[i] = m_ys(m, pay[i], paz[i]);
+        if (py[i] < m->ih || paz[i] < 10) c50++;
+        if (py[i] > m->h  || paz[i] < 10) c51++;
+        if (px[i] < m->iw || paz[i] < 10) c52++;
+        if (px[i] > m->w  || paz[i] < 10) c53++;
+        if (paz[i] < 10) c54++;
     }
-    bool vis = !(c52 == N || c50 == N || c51 == N || c53 == N);
+    if (c52 == N || c50 == N || c51 == N || c53 == N) return;
+    bool vis = true;
+
+    bool b2 = false;
+    int bay[MAXN], baz[MAXN];
+    memcpy(bay, ay, N * sizeof(int)); memcpy(baz, az, N * sizeof(int));
+    memcpy(ay, pay, N * sizeof(int)); memcpy(az, paz, N * sizeof(int));
     if (c54 != 0) b = true;
     if (vis && n6 != -1) {
         int d3 = 0, d4 = 0;
@@ -514,12 +529,13 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         int cy = (ymx + ymn) / 2, cx = (xmx + xmn) / 2, czz = (zmx + zmn) / 2;
         o->av[pi] = isqrt_n((m->cy - cy) * (m->cy - cy) + (m->cx - cx) * (m->cx - cx) + czz * czz + gr * gr * gr);
         int av = o->av[pi];
-        if (m->trk == 0 && (av > m->fade[disline] || av == 0)) vis = false;
+        if (m->trk == 0 && (av > (int)((int64_t)m->fade[disline] * m->far_pct / 100) || av == 0)) vis = false;
         if (lastmaf == -111 && av > 4500 && !road) vis = false;
         if (lastmaf == -111 && av > 1500) b = true;
         if (av > 3000 && m->adv <= 900) b = true;
         if (fs == 22 && av < 11200) m->lastmaf = lastmaf;
         if (gr0 == -13) vis = false;
+        if (vis && (gr0 == -14 || gr0 == -15 || gr0 == -12)) b2 = facing_away(m, ax, bay, baz, N);
         if ((gr0 == -14 || gr0 == -15 || gr0 == -12) && (av > 11000 || b2 || lastmaf == -111)) vis = false;
         if (gr0 == -11 && av > 11000) vis = false;
         if (glass == 2 && (m->trk != 0 || av > 6700)) vis = false;
@@ -527,6 +543,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     if (!vis) return;
 
     int av = o->av[pi];
+    if (!(gr0 == -14 || gr0 == -15 || gr0 == -12)) b2 = facing_away(m, ax, bay, baz, N);
     float n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
     if (b && !solo) {
         bool b3 = false;
@@ -591,7 +608,7 @@ void inst_draw(Medium *m, Inst *o)
     int n3 = m->cz + jint((o->y - m->y - m->cy) * szy + (n2 - m->cz) * czy_);
     int n4 = oxs(m, n + maxR, n3) - oxs(m, n - maxR, n3);
     if (oxs(m, n + maxR * 2, n3) > m->iw && oxs(m, n - maxR * 2, n3) < m->w && n3 > -maxR &&
-        (n3 < m->fade[disline] + maxR || m->trk != 0) && (n4 > mesh->disp || m->trk != 0) && !(decor && false)) {
+        (n3 < (int)((int64_t)m->fade[disline] * m->far_pct / 100) + maxR || m->trk != 0) && (n4 > mesh->disp || m->trk != 0) && !(decor && false)) {
         int n8 = m->cy + jint((o->y - m->y - m->cy) * czy_ - (n2 - m->cz) * szy);
         if (m_ys(m, n8 + maxR, n3) > m->ih && m_ys(m, n8 - maxR, n3) < m->h) {
             const uint32_t np = mesh->npolys;

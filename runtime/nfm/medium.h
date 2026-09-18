@@ -22,6 +22,7 @@ typedef struct {
     int iw, ih, w, h;      /* 0, 0, 800, 450 */
     int ground, skyline;
     int fade[16], fogd;
+    int far_pct;   /* draw-distance cull scale in percent (100 = original Java behaviour) */
     int cfade[3], csky[3], cgrnd[3], crgrnd[3], cpol[3], osky[3], ogrnd[3], snap[3];
     int texture[4];
     int adv;               /* 500 */
