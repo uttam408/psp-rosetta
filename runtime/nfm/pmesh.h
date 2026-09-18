@@ -42,9 +42,11 @@ typedef struct {
     const uint16_t *indices;
     const PmWheel *wheels;
     const PmTrack *tracks;
+    void *owned;   /* aligned copy of the blob when the source was misaligned (free with pmesh_free) */
 } PMesh;
 
 /* returns false on bad magic/version/truncation */
 bool pmesh_load(PMesh *m, const uint8_t *data, size_t size);
+void pmesh_free(PMesh *m);
 
 #endif

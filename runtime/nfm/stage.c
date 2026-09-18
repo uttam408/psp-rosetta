@@ -133,6 +133,7 @@ void scene_free(Scene *sc)
 {
     for (uint32_t i = 0; i < sc->n; i++) inst_free(&sc->inst[i]);
     for (uint32_t i = 0; i < sc->npiles; i++) pile_free(&sc->piles[i]);
+    if (sc->meshes) for (int i = 0; i < NPIECE_COUNT; i++) pmesh_free(&sc->meshes[i]);
     free(sc->inst); free(sc->meshes); free(sc->piles);
     memset(sc, 0, sizeof *sc);
 }

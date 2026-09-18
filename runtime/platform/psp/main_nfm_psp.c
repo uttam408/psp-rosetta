@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 #include "../../src/pak.h"
 #include "../../nfm/medium.h"
@@ -38,6 +39,14 @@ static int cb_thread(SceSize s, void *p)
     return 0;
 }
 
+/* crash diagnostics: every step is appended and closed so the card keeps it even if we die */
+static void step(const char *fmt, ...)
+{
+    FILE *f = fopen("nfm_boot.txt", "a");
+    if (!f) return;
+    va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
+    fputc('\n', f); fclose(f);
+}
 static uint32_t g_px[W * H];
 static char g_names[64][96];
 static int g_nstages;
@@ -53,14 +62,19 @@ int main(void)
     int th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
 
+    { FILE *z = fopen("nfm_boot.txt", "w"); if (z) fclose(z); }
+    step("start, free mem %u, max block %u", (unsigned)sceKernelTotalFreeMemSize(), (unsigned)sceKernelMaxFreeMemSize());
     scePowerSetClockFrequency(333, 333, 166);
+    step("clock set: cpu %d bus %d", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency());
     pspDebugScreenInit();
+    pspDebugScreenPrintf("NFM viewer starting...\n");
     if (!pak_open("assets.pak")) {
         pspDebugScreenPrintf("assets.pak not found next to EBOOT.PBP\n");
         sceKernelDelayThread(4 * 1000 * 1000);
         sceKernelExitGame();
         return 0;
     }
+    step("pak opened: %d assets, free mem %u", pak_count(), (unsigned)sceKernelTotalFreeMemSize());
     for (int i = 0; i < pak_count() && g_nstages < 64; i++) {
         const char *id = pak_at(i)->id;
         if (strncmp(id, "data/stage/", 11) == 0) {
@@ -77,6 +91,7 @@ int main(void)
         return 0;
     }
 
+    step("stages listed: %d", g_nstages);
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
 
@@ -88,6 +103,7 @@ int main(void)
 
     static Stage st; static Scene sc; static Medium med;
     bool loaded = false;
+    int first = 1;
     Frame f = { W, H, g_px };
     unsigned long long tlast = sceKernelGetSystemTimeWide();
     int frames = 0; float fps = 0; unsigned long long acc_draw = 0, acc_blit = 0;
@@ -100,12 +116,16 @@ int main(void)
             snprintf(id, sizeof id, "%s.pstg", g_names[stage_i]);
             const PakAsset *a = pak_find(g_names[stage_i]);
             if (!a) a = pak_find(id);
+            step("loading %s", g_names[stage_i]);
             loaded = a && stage_load(&st, a->data, a->size);
+            step("stage_load -> %d", (int)loaded);
             if (!loaded) { want = 1; continue; }
             medium_init(&med, &f);
             stage_apply_env(&st, &med);
             med.far_pct = far_pct;
+            step("medium ready, building scene");
             scene_build(&sc, &st, &med);
+            step("scene built: %u pieces", (unsigned)sc.n);
             int camx = 0, camz = 0;
             if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
             med.x = camx - med.cx; med.z = camz; med.y = -300; med.xz = 0; med.zy = 10;
@@ -136,7 +156,9 @@ int main(void)
 
         g_polys_in = g_polys_drawn = 0;
         unsigned long long t_a = sceKernelGetSystemTimeWide();
+        if (frames == 0 && first) step("first draw");
         scene_draw(&med, &sc);
+        if (first) { step("first draw done"); }
         unsigned long long t_b = sceKernelGetSystemTimeWide();
 
         uint32_t *fb = vram[cur];
@@ -149,9 +171,11 @@ int main(void)
             pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct);
         }
         sceDisplayWaitVblankStart();
+        if (first) { step("first blit, setting framebuf"); }
         /* topaddr must be the real VRAM address: 0 means "disable display" */
         sceDisplaySetFrameBuf((void *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ), STRIDE, PSP_DISPLAY_PIXEL_FORMAT_8888, PSP_DISPLAY_SETBUF_NEXTFRAME);
         cur ^= 1;
+        if (first) { step("first frame shown"); first = 0; }
 
         frames++;
         unsigned long long now = sceKernelGetSystemTimeWide();

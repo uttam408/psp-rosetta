@@ -1,4 +1,6 @@
 #include "pmesh.h"
+#include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #define HDR_SIZE 56
@@ -10,6 +12,13 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
 {
     if (size < HDR_SIZE || memcmp(d, "PMSH", 4) != 0 || rd16(d + 4) != 2) return false;
     memset(m, 0, sizeof *m);
+    /* the arrays below are dereferenced in place: real MIPS (PSP) faults on misaligned float/int loads */
+    if ((uintptr_t)d & 3) {
+        uint8_t *c = malloc(size);
+        if (!c) return false;
+        memcpy(c, d, size);
+        m->owned = c; d = c;
+    }
     m->flags    = rd16(d + 6);
     m->nverts   = rd32(d + 8);
     m->npolys   = rd32(d + 12);
@@ -30,7 +39,7 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
     size_t after = off + vb + pb + ib;
     after += (4 - after % 4) % 4;
     size_t end = after + (size_t)m->nwheels * sizeof(PmWheel) + (size_t)m->ntracks * sizeof(PmTrack);
-    if (end > size) return false;
+    if (end > size) { pmesh_free(m); return false; }
 
     m->verts   = (const PmVert *)(d + off);
     m->polys   = (const PmPoly *)(d + off + vb);
@@ -39,7 +48,9 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
     m->tracks  = (const PmTrack *)(d + after + (size_t)m->nwheels * sizeof(PmWheel));
     for (uint32_t i = 0; i < m->npolys; i++) {
         const PmPoly *p = &m->polys[i];
-        if ((size_t)p->first_index + p->nverts > m->nindices) return false;
+        if ((size_t)p->first_index + p->nverts > m->nindices) { pmesh_free(m); return false; }
     }
     return true;
 }
+
+void pmesh_free(PMesh *m) { free(m->owned); m->owned = NULL; }
