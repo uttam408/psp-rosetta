@@ -1,4 +1,5 @@
 #include "world.h"
+#include "gfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,10 +67,16 @@ void world_render(World *w)
         }
         w->ents[j + 1] = key;
     }
+    bool clipped = false;
     for (int i = 0; i < w->count; i++) {
         Entity *e = w->ents[i];
+        if (w->clip_on) {
+            if (!clipped && e->layer > w->clip_layer) { gfx_clip_below(w->clip_world_y); clipped = true; }
+            else if (clipped && e->layer <= w->clip_layer) { gfx_clip_reset(); clipped = false; }
+        }
         if (e->alive && e->render) e->render(e);
     }
+    if (clipped) gfx_clip_reset();
 }
 
 int world_count(World *w) { return w->count; }

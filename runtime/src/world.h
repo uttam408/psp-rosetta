@@ -14,6 +14,11 @@ typedef struct World {
        is safe (FlashPunk semantics). */
     Entity *pending[WORLD_MAX];
     int pending_count;
+    /* optional: entities with layer > clip_layer (drawn first) are clipped to
+       above clip_world_y — the water surface hides everything beneath it. */
+    bool   clip_on;
+    int    clip_layer;
+    double clip_world_y;
 } World;
 
 void    world_init(World *w);

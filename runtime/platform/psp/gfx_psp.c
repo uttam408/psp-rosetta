@@ -32,6 +32,7 @@ struct GfxTex {
 typedef struct { float u, v; unsigned int color; float x, y, z; } Vtx;
 
 static GfxTex *g_bound;     /* currently-bound texture (bind cache) */
+static bool g_model_ident;  /* GU model matrix is known to be identity */
 
 static unsigned int rgb_to_abgr(unsigned int rgb)
 {
@@ -85,6 +86,9 @@ void gfx_frame_begin(uint32_t rgb)
     sceGumOrtho(0, SCR_W, SCR_H, 0, -1, 1);
     sceGumMatrixMode(GU_VIEW);
     sceGumLoadIdentity();
+    sceGumMatrixMode(GU_MODEL);
+    sceGumLoadIdentity();
+    g_model_ident = true;
 
     g_bound = NULL;
 }
@@ -176,16 +180,7 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
 
     bind(t);
 
-    sceGumMatrixMode(GU_MODEL);
-    sceGumLoadIdentity();
-    ScePspFVector3 tr = { screenx, screeny, 0.0f };
-    sceGumTranslate(&tr);
-    if (angle != 0.0) sceGumRotateZ((float)(angle * FP_RAD));
-    if (sx != 1.0 || sy != 1.0) {
-        ScePspFVector3 sc = { (float)fabs(sx), (float)fabs(sy), 1.0f };
-        sceGumScale(&sc);
-    }
-
+    float dsx = (float)fabs(sx), dsy = (float)fabs(sy);
     float l = (float)-ox, tp = (float)-oy;
     float r = (float)(fw - ox), b = (float)(fh - oy);
     float u0 = (float)fx / t->tw, v0 = (float)fy / t->th;
@@ -193,6 +188,30 @@ void gfx_draw(GfxTex *t, double x, double y, double angle,
     if (sx < 0) { float s = u0; u0 = u1; u1 = s; }
     if (sy < 0) { float s = v0; v0 = v1; v1 = s; }
     unsigned int col = rgb_to_abgr(tint);
+
+    if (angle == 0.0) {
+        /* Unrotated (the vast majority: text glyphs, water/space tiles, clouds,
+         * most FX): place the quad's corners on the CPU and draw with an
+         * identity model matrix — skips the per-sprite GUM matrix-stack work. */
+        if (!g_model_ident) {
+            sceGumMatrixMode(GU_MODEL);
+            sceGumLoadIdentity();
+            g_model_ident = true;
+        }
+        l = screenx + l * dsx;  r = screenx + r * dsx;
+        tp = screeny + tp * dsy; b = screeny + b * dsy;
+    } else {
+        sceGumMatrixMode(GU_MODEL);
+        sceGumLoadIdentity();
+        ScePspFVector3 tr = { screenx, screeny, 0.0f };
+        sceGumTranslate(&tr);
+        sceGumRotateZ((float)(angle * FP_RAD));
+        if (sx != 1.0 || sy != 1.0) {
+            ScePspFVector3 sc = { dsx, dsy, 1.0f };
+            sceGumScale(&sc);
+        }
+        g_model_ident = false;
+    }
 
     Vtx *v = sceGuGetMemory(4 * sizeof(Vtx));
     v[0] = (Vtx){ u0, v0, col, l, tp, 0 };
@@ -219,5 +238,16 @@ void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
         for (int tx = 0; tx < span_w; tx += t->tw)
             gfx_draw(t, x + tx, y + ty, 0, 0, 0, 1, 1, 0xFFFFFF, 0, 0, t->tw, t->th);
 }
+
+/* sceGuScissor's last two args are the (exclusive) bottom-right corner. */
+void gfx_clip_below(double world_y)
+{
+    int sy = (int)floor(world_y - fp_camera.y);
+    if (sy < 0) sy = 0;
+    if (sy > SCR_H) sy = SCR_H;
+    sceGuScissor(0, 0, SCR_W, sy);
+}
+
+void gfx_clip_reset(void) { sceGuScissor(0, 0, SCR_W, SCR_H); }
 
 bool gfx_save_bmp(const char *path) { (void)path; return false; }

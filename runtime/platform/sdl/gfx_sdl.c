@@ -149,6 +149,17 @@ void gfx_draw_tiled(GfxTex *t, double x, double y, int span_w, int span_h)
             gfx_draw(t, tx, ty, 0, 0, 0, 1, 1, 0xFFFFFF, 0, 0, t->w, t->h);
 }
 
+void gfx_clip_below(double world_y)
+{
+    int sy = (int)floor(world_y - fp_camera.y);
+    if (sy < 0) sy = 0;
+    if (sy > g_lh) sy = g_lh;
+    SDL_Rect r = { 0, 0, g_lw, sy };
+    SDL_RenderSetClipRect(g_ren, &r);
+}
+
+void gfx_clip_reset(void) { SDL_RenderSetClipRect(g_ren, NULL); }
+
 bool gfx_save_bmp(const char *path)
 {
     int w, h;

@@ -32,10 +32,12 @@ static void uboot_update(Entity *e)
             snd_music("audio/worlds/game/music", 0.5f);
             g_game.music_started = true;
         }
-        /* the hull sprite's conning tower (launch hatch) sits ~4px right of
-           its geometric bounding-box center, so spawning at e->x,e->y (the
-           render origin) puts the plane visibly off the tower. */
-        player_spawn(e->x + 4, e->y);
+        /* Measured per-row: the conning tower BODY (the hatch) is centered at
+           the sprite's geometric bounding-box center (x=51.5 of 103) — the
+           earlier +4px "fix" was measuring the thin periscope mast instead,
+           which sits off-center on its own and isn't the visual reference
+           point. No offset needed; e->x,e->y is already the tower center. */
+        player_spawn(e->x, e->y);
         u->launched = true;
         u->t_dive = SPEC_UBOOT_LAUNCH_DIVE_AFTER;
     }
@@ -63,8 +65,12 @@ static void uboot_render(Entity *e)
 {
     UBoot *u = e->user;
     if (u->hull) {
+        /* a->w/h are the POT-PADDED texture dims (128x64); the sprite's real
+           size is frames[0] (103x48). Using the padded size shifted the visible
+           sprite ~12.5px left of e->x and made the plane launch off the tower. */
         const PakAsset *a = pak_find("image/interaction/uboot/uboot");
-        int w = a ? a->w : 128, h = a ? a->h : 64;
+        int w = (a && a->nframes) ? a->frames[0].w : 103;
+        int h = (a && a->nframes) ? a->frames[0].h : 48;
         gfx_draw(u->hull, e->x, e->y, 0, w / 2.0, h / 2.0, 1, 1,
                  0xFFFFFF, 0, 0, w, h);
     }
@@ -82,7 +88,7 @@ Entity *uboot_spawn(void)
     u->e.layer = LAYER_ENEMY;
 
     const PakAsset *a = pak_find("image/interaction/uboot/uboot");
-    double hh = a ? a->h / 2.0 : 24;
+    double hh = (a && a->nframes) ? a->frames[0].h / 2.0 : 24;   /* content, not POT-padded */
     u->e.x = SPEC_UBOOT_SPAWN_X;
     u->e.y = SPEC_WORLD_WATER_Y + hh;           /* just below the water line */
     ent_set_vspeed(&u->e, SPEC_UBOOT_RISE_VSPEED);

@@ -59,6 +59,9 @@ void game_start(void)
     world_clear(&g_game.world);          /* recycle the previous game's entities */
     memset(&g_game, 0, sizeof g_game);
     world_init(&g_game.world);
+    g_game.world.clip_on = true;
+    g_game.world.clip_layer = LAYER_WATER;
+    g_game.world.clip_world_y = SPEC_WORLD_WATER_Y;
     fp_seed(1);   /* TODO: match FlashPunk's seed init for replay parity */
     g_game.high_score = hi;
 

@@ -13,7 +13,7 @@ OBJS = \
   platform/psp/main_psp.o
 
 INCDIR   = src .
-CFLAGS   = -O2 -G0 -Wall -std=c11 -Wno-unused-parameter
+CFLAGS   = -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -MMD -MP
 ASFLAGS  = $(CFLAGS)
 LDFLAGS  =
 LIBS     = -lpspgum -lpspgu -lm -lpspaudiolib -lpspaudio -lpspctrl -lpspdisplay -lpspge -lpspdebug
@@ -40,3 +40,7 @@ gen/spec_luftrauser.h: ../spec/luftrauser.toml ../spec/gen_spec.py
 $(OBJS): gen/spec_luftrauser.h
 
 include $(PSPSDK)/lib/build.mak
+
+# header deps: without these, editing game.h (e.g. LAYER_* values) silently
+# leaves stale .o files in the EBOOT.
+-include $(OBJS:.o=.d)

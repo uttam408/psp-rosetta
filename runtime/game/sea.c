@@ -124,9 +124,12 @@ static Sea *sea_new(EntityType t, double x, const char *tex_id, int layer)
     s->en.e.layer = layer;
     s->en.on_death = sea_sink_start;
 
+    /* content size from frames[0], NOT a->w/h (those are the POT-padded
+       texture dims: the 204x48 battleship is a 256x64 texture, which made it
+       float 16px above the waterline). */
     const PakAsset *a = pak_find(tex_id);
-    s->ship_w = a ? a->w : 64;
-    s->ship_h = a ? a->h : 32;
+    s->ship_w = (a && a->nframes) ? a->frames[0].w : 64;
+    s->ship_h = (a && a->nframes) ? a->frames[0].h : 32;
     s->spr = tex(tex_id);
 
     s->en.e.x = x;
