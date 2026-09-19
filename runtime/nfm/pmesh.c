@@ -10,7 +10,7 @@ static uint16_t rd16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v;
 
 bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
 {
-    if (size < HDR_SIZE || memcmp(d, "PMSH", 4) != 0 || rd16(d + 4) != 2) return false;
+    if (size < HDR_SIZE || memcmp(d, "PMSH", 4) != 0 || rd16(d + 4) != 3) return false;
     memset(m, 0, sizeof *m);
     /* the arrays below are dereferenced in place: real MIPS (PSP) faults on misaligned float/int loads */
     if ((uintptr_t)d & 3) {

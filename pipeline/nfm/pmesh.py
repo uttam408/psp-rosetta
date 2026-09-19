@@ -3,7 +3,7 @@
 Little-endian.  Layout::
 
     HEADER (56 bytes, HDR_FMT)
-      char[4] "PMSH"  u16 version(=2)  u16 flags
+      char[4] "PMSH"  u16 version(=3)  u16 flags
       u32 nverts  u32 npolys  u32 nindices  u32 max_r
       u8 nwheels  u8 ntracks  u16 pad
       u8[3] first_color  pad   u8[3] second_color  pad   i16[5] rims   pad[2]
@@ -20,7 +20,7 @@ Little-endian.  Layout::
                         s16 gr, s16 fs, u8 no_outline, pad
     indices   nindices * u16                  one triangle fan per poly
     (pad to 4)
-    wheels    nwheels * 28 bytes: i32 x,y,z,steer,width,height,gwgr
+    wheels    nwheels * 36 bytes: i32 x,y,z,steer,width,height,gwgr,keyx,keyz
     tracks    ntracks * 44 bytes: u8 r,g,b,pad, i32 xy,zy,radx,rady,radz,x,y,z,skid,
                         u8 dam, u8 notwall, u16 pad
 
@@ -40,7 +40,7 @@ from .rad import Model
 
 HDR_FMT = "<4sHHIIIIBBH3sx3sx5hxxHHHH"    # 56 bytes
 POLY_FMT = "<IHBBBBBBhhBx"              # 18 bytes
-WHEEL_FMT = "<7i"                       # 28 bytes
+WHEEL_FMT = "<9i"                       # 36 bytes
 TRACK_FMT = "<3BxiiiiiiiiiBBxx"         # 44 bytes
 
 
@@ -60,7 +60,7 @@ def pack_pmesh(m: Model) -> bytes:
              | (("stonecold" in m.flags) << 6) | (("newstone" in m.flags) << 7))
     rims = (tuple(m.rims) + (0,) * 5)[:5] if m.rims else (0,) * 5
     out = bytearray(struct.pack(
-        HDR_FMT, b"PMSH", 2, flags, len(verts), len(m.polys), len(idx), m.max_r,
+        HDR_FMT, b"PMSH", 3, flags, len(verts), len(m.polys), len(idx), m.max_r,
         len(m.wheels), len(m.tracks), 0,
         bytes(m.first_color or (0, 0, 0)), bytes(m.second_color or (0, 0, 0)), *rims,
         m.props.get("disline", 14), m.props.get("disp", 0),
@@ -71,7 +71,7 @@ def pack_pmesh(m: Model) -> bytes:
     out += struct.pack(f"<{len(idx)}H", *idx)
     out += b"\0" * (-len(out) % 4)
     for w in m.wheels:
-        out += struct.pack(WHEEL_FMT, w.x, w.y, w.z, w.steer, w.width, w.height, w.gwgr)
+        out += struct.pack(WHEEL_FMT, w.x, w.y, w.z, w.steer, w.width, w.height, w.gwgr, w.keyx, w.keyz)
     for t in m.tracks:
         out += struct.pack(TRACK_FMT, *t.color, t.xy, t.zy, t.radx, t.rady, t.radz,
                            t.x, t.y, t.z, t.skid, t.dam, int(t.notwall))
@@ -83,7 +83,7 @@ def unpack_pmesh(data: bytes) -> dict[str, Any]:
     (magic, ver, flags, nv, npoly, ni, max_r, nw, nt, _pad,
      c1, c2, *rest) = struct.unpack_from(HDR_FMT, data, 0)
     rims, (disline, disp, grounded, _p2) = rest[:5], rest[5:]
-    assert magic == b"PMSH" and ver == 2, (magic, ver)
+    assert magic == b"PMSH" and ver == 3, (magic, ver)
     off = struct.calcsize(HDR_FMT)
     verts = [struct.unpack_from("<3f", data, off + 12 * i) for i in range(nv)]
     off += 12 * nv
@@ -92,8 +92,8 @@ def unpack_pmesh(data: bytes) -> dict[str, Any]:
     indices = list(struct.unpack_from(f"<{ni}H", data, off))
     off += 2 * ni
     off += -off % 4
-    wheels = [struct.unpack_from(WHEEL_FMT, data, off + 28 * i) for i in range(nw)]
-    off += 28 * nw
+    wheels = [struct.unpack_from(WHEEL_FMT, data, off + 36 * i) for i in range(nw)]
+    off += 36 * nw
     tracks = [struct.unpack_from(TRACK_FMT, data, off + 44 * i) for i in range(nt)]
     return {"flags": flags, "max_r": max_r, "first": tuple(c1), "second": tuple(c2),
             "rims": tuple(rims), "disline": disline, "disp": disp, "grounded": grounded,

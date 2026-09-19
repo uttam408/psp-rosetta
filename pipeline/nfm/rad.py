@@ -65,6 +65,8 @@ class Wheel:
     width: int
     height: int
     gwgr: int
+    keyx: int = 0            # ContO.keyx/keyz: wheel x/z without iwid (Mad's contact points)
+    keyz: int = 0
 
 
 @dataclass
@@ -217,7 +219,9 @@ def parse_rad(text: str, name: str = "") -> Model:
                 steer=a[3],
                 width=int(f32(f32(a[4] * div) * iwid)),
                 height=int(f32(a[5] * div)),
-                gwgr=gwgr))
+                gwgr=gwgr,
+                keyx=int(f32(f32(a[0] * div) * scale[0])),
+                keyz=int(f32(f32(a[2] * div) * scale[2]))))
         elif line.startswith("disp("):
             seen_disp = True
             props["disp"] = args(line)[0]

@@ -16,7 +16,7 @@ typedef struct {
     int16_t  gr, fs;
     uint8_t  no_outline, pad;
 } PmPoly;
-typedef struct { int32_t x, y, z, steer, width, height, gwgr; } PmWheel;
+typedef struct { int32_t x, y, z, steer, width, height, gwgr, keyx, keyz; } PmWheel;
 /* runtime-only per-poly extras, present (px != NULL) only on car meshes that carry procedural wheels */
 typedef struct { int32_t wx, wy, wz; uint8_t wheel, master, disline, pad; } PmPolyX;
 typedef struct {
