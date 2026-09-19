@@ -66,8 +66,18 @@ static void blit(uint32_t *vram)
     for (int y = 0; y < H; y++) memcpy(vram + y * STRIDE, g_px + y * W, W * 4);
 }
 
+/* NaN/inf must produce values (as in Java), not FPU traps: clear the FCSR exception-enable bits */
+static void fpu_mask_exceptions(void)
+{
+    unsigned t;
+    __asm__ volatile("cfc1 %0, $31" : "=r"(t));
+    t &= ~0x0F80u;
+    __asm__ volatile("ctc1 %0, $31" : : "r"(t));
+}
+
 int main(void)
 {
+    fpu_mask_exceptions();
     int th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
 

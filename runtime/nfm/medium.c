@@ -551,28 +551,38 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     NFM_TRACE("b2 begin", (int)pi, N);
     if (!(gr0 == -14 || gr0 == -15 || gr0 == -12)) b2 = facing_away(m, ax, bay, baz, N);
     NFM_TRACE("b2 done", (int)pi, (int)b2);
-    float n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
-    NFM_TRACE("n70 raw", (int)pi, (int)(n70 * 1000));
+    /* n70 = projf/deltaf + 0.3.  deltaf == 0 gives NaN (0/0) or +-inf; Java carries NaN through (all
+     * comparisons false, HSBtoRGB(NaN) -> black) but the PSP FPU faults on NaN compares/conversions,
+     * so NaN is tracked in `nan70` and never touches a float compare. */
+    float n70;
+    bool nan70 = false;
+    if (o->deltaf[pi] == 0.0f) {
+        if (o->projf[pi] == 0.0f) { n70 = 0.0f; nan70 = true; }
+        else n70 = o->projf[pi] > 0.0f ? 1e30f : -1e30f;
+    } else n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
+#define SET70(v) do { n70 = (v); nan70 = false; } while (0)
     if (b && !solo) {
-        bool b3 = false;
-        if (n70 > 1.0f) { if (n70 >= 1.27) b3 = true; n70 = 1.0f; }
-        if (b3) n70 *= 0.89; else n70 *= 0.86;
-        if (n70 < 0.37) n70 = 0.37f;
-        if (gr0 == -9) n70 = 0.7f;
-        if (gr0 == -4) n70 = 0.74f;
-        if (gr0 != -7 && m->trk == 0 && b2) n70 = 0.32f;
-        if (gr0 == -8 || gr0 == -14 || gr0 == -15) n70 = 1.0f;
-        if (gr0 == -11 || gr0 == -12) n70 = n6 == -1 ? 0.76f : 0.6f;
-        if (gr0 == -6) n70 = 0.62f;
-        if (gr0 == -5) n70 = 0.55f;
+        if (!nan70) {
+            bool b3 = false;
+            if (n70 > 1.0f) { if (n70 >= 1.27) b3 = true; n70 = 1.0f; }
+            if (b3) n70 *= 0.89; else n70 *= 0.86;
+            if (n70 < 0.37) n70 = 0.37f;
+        }
+        if (gr0 == -9) SET70(0.7f);
+        if (gr0 == -4) SET70(0.74f);
+        if (gr0 != -7 && m->trk == 0 && b2) SET70(0.32f);
+        if (gr0 == -8 || gr0 == -14 || gr0 == -15) SET70(1.0f);
+        if (gr0 == -11 || gr0 == -12) SET70(n6 == -1 ? 0.76f : 0.6f);
+        if (gr0 == -6) SET70(0.62f);
+        if (gr0 == -5) SET70(0.55f);
     } else {
-        if (n70 > 1.0f) n70 = 1.0f;
-        if (n70 < 0.6 || b2) n70 = 0.6f;
+        if (!nan70 && n70 > 1.0f) n70 = 1.0f;
+        if ((!nan70 && n70 < 0.6) || b2) SET70(0.6f);
     }
+#undef SET70
     int r, g, bl;
-    NFM_TRACE("hsb in", (int)(o->hsb[pi*3+2] * 1000), (int)(n70 * 1000));
-    hsb2rgb(o->hsb[pi*3], o->hsb[pi*3+1], o->hsb[pi*3+2] * n70, &r, &g, &bl);
-    NFM_TRACE("hsb out", r, g);
+    if (nan70) r = g = bl = 0;
+    else hsb2rgb(o->hsb[pi*3], o->hsb[pi*3+1], o->hsb[pi*3+2] * n70, &r, &g, &bl);
     if (m->trk == 0)
         for (int i = 0; i < 16; i++)
             if (av > m->fade[i]) {
