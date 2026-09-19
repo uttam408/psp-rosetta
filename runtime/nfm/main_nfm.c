@@ -102,13 +102,16 @@ static int stage_main(int argc, char **argv)
             Inst *c = scene_add_car(&sc, &med, id, cxp, czp, 0, 0xc83232, 0x282828);
             if (c) { c->wzy = spin; c->wxz = steer; }
         }
+    static MadEnv env; static Mad mad; static CarObj co;
+    bool driving = false; Inst *dci = NULL;
     if (drive_car) {
         int cn = -1;
         for (int k = 0; k < 16; k++) if (strcmp(NFM_CARS[k].mesh, drive_car) == 0) cn = k;
         char id[96]; snprintf(id, sizeof id, "mesh/car/%s", drive_car);
         Inst *ci = cn < 0 ? NULL : scene_add_car(&sc, &med, id, 0, -760, 0, 0xc83232, 0x282828);
         if (!ci) { fprintf(stderr, "cannot drive car %s\n", drive_car); return 1; }
-        static MadEnv env; static Mad mad; static CarObj co; Control ctl = { 0 };
+        Control ctl = { 0 };
+        driving = true; dci = ci;
         env.im = 0; carobj_init(&co, ci); mad_init(&mad, &env, 0); mad_reseto(&mad, cn, &co, &sc.cp);
         printf("trackers %d (%dx%d cells), checkpoints %d (nsp %d), laps %d\n", sc.trk.n, sc.trk.ncx + 1, sc.trk.ncz + 1, sc.cp.n, sc.cp.nsp, sc.cp.nlaps);
         for (int fr = 0; fr < drive_frames; fr++) {
@@ -148,6 +151,17 @@ static int stage_main(int argc, char **argv)
         while (SDL_PollEvent(&ev))
             if (ev.type == SDL_QUIT || (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE)) run = false;
         const Uint8 *k = SDL_GetKeyboardState(NULL);
+        if (driving) {      /* arrows drive, space = handbrake; physics ticks at the original's ~30 Hz, camera chases */
+            static Uint32 last; Uint32 now = SDL_GetTicks();
+            Control ctl = { k[SDL_SCANCODE_LEFT], k[SDL_SCANCODE_RIGHT], k[SDL_SCANCODE_UP], k[SDL_SCANCODE_DOWN], k[SDL_SCANCODE_SPACE], false, -1 };
+            for (int n = 0; now - last >= 33 && n < 4; n++, last += 33) mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
+            if (now - last >= 33) last = now;
+            med.x = dci->x - (int)(m_sin(dci->xz) * 900) - med.cx; med.z = dci->z - (int)(m_cos(dci->xz) * 900);
+            med.y = dci->y - 490; med.xz = dci->xz; med.zy = 10;
+            scene_draw(&med, &sc);
+            SDL_UpdateTexture(tex, NULL, px, W * 4); SDL_RenderCopy(r, tex, NULL, NULL); SDL_RenderPresent(r);
+            continue;
+        }
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = k[SDL_SCANCODE_LSHIFT] ? 120 : 40;
         if (k[SDL_SCANCODE_LEFT])  med.xz = (med.xz + 359) % 360;
