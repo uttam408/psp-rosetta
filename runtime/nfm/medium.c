@@ -7,6 +7,10 @@
 
 void (*g_nfm_trace)(const char *, int, int);
 int g_polys_in, g_polys_drawn;
+#ifdef NFM_PROF
+unsigned long long (*g_prof_now)(void);
+unsigned long long g_prof[PROF_N];
+#endif
 
 #define MAXN 64          /* largest polygon in the game is 28 verts (stage lettering); warn beyond this */
 
@@ -185,8 +189,10 @@ static void rot(const Medium *m, int *a, int *b, int n, int n2, int ang, int cnt
     float s = m_sin(ang), c = m_cos(ang);
     for (int i = 0; i < cnt; i++) {
         int x = a[i], y = b[i];
-        a[i] = n  + jint((x - n) * c - (y - n2) * s);
-        b[i] = n2 + jint((x - n) * s + (y - n2) * c);
+        /* inputs are bounded ints and c/s are finite table values, so the result is always finite and
+         * inside int range: a plain truncating cast equals Java's (int)double and skips jint's guards */
+        a[i] = n  + (int)((x - n) * c - (y - n2) * s);
+        b[i] = n2 + (int)((x - n) * s + (y - n2) * c);
     }
 }
 
@@ -387,7 +393,9 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
     o->mesh = mesh; o->x = x; o->y = y; o->z = z; o->xz = xz;
     o->noline = false;
     size_t n = mesh->npolys;
-    o->av = calloc(n, sizeof(int)); o->hsb = calloc(n * 3, sizeof(float)); o->col = calloc(n * 3, sizeof(int));
+    o->av = calloc(n, sizeof(int)); o->order = malloc((n ? n : 1) * sizeof(int));
+    for (size_t i = 0; i < n; i++) o->order[i] = (int)i;
+    o->hsb = calloc(n * 3, sizeof(float)); o->col = calloc(n * 3, sizeof(int));
     o->deltaf = calloc(n, sizeof(float)); o->projf = calloc(n, sizeof(float)); o->typ = calloc(n, 1);
     for (size_t i = 0; i < n; i++) {
         const PmPoly *p = &mesh->polys[i];
@@ -415,7 +423,7 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
 
 void inst_free(Inst *o)
 {
-    free(o->av); free(o->hsb); free(o->col); free(o->deltaf); free(o->projf); free(o->typ);
+    free(o->av); free(o->order); free(o->hsb); free(o->col); free(o->deltaf); free(o->projf); free(o->typ);
     memset(o, 0, sizeof *o);
 }
 
@@ -458,6 +466,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     const int N = P->nverts;
     if (N > MAXN) { fprintf(stderr, "plane: %d-vertex polygon exceeds MAXN\n", N); return; }
     if (N < 3) return;
+    PROF_T(t_rot);
     int ax[MAXN], az[MAXN], ay[MAXN];
     for (int i = 0; i < N; i++) {
         const PmVert *s = &mesh->verts[mesh->indices[P->first_index + i]];
@@ -489,6 +498,8 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     int pay[MAXN], paz[MAXN];
     memcpy(pay, ay, N * sizeof(int)); memcpy(paz, az, N * sizeof(int));
     rot(m, pay, paz, m->cy, m->cz, m->zy, N);
+    PROF_ADD(PROF_ROT, t_rot);
+    PROF_T(t_prj);
     int px[MAXN], py[MAXN];
     int c50 = 0, c51 = 0, c52 = 0, c53 = 0, c54 = 0;
     for (int i = 0; i < N; i++) {
@@ -499,6 +510,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (px[i] > m->w  || paz[i] < 10) c53++;
         if (paz[i] < 10) c54++;
     }
+    PROF_ADD(PROF_PROJ, t_prj);
     if (c52 == N || c50 == N || c51 == N || c53 == N) return;
     bool vis = true;
 
@@ -557,6 +569,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     }
     if (!vis) return;
     NFM_TRACE("shade", (int)pi, 0);
+    PROF_T(t_sh);
 
     int av = o->av[pi];
     NFM_TRACE("b2 begin", (int)pi, N);
@@ -603,6 +616,8 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
             }
     NFM_TRACE("fog done", av, m->fogd);
     NFM_TRACE("fill", (int)pi, N);
+    PROF_ADD(PROF_SHADE, t_sh);
+    PROF_T(t_fl);
     fill_ipoly(m, px, py, N, r, g, bl);
     g_polys_drawn++;
     if (!b) {
@@ -619,6 +634,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         bl -= 10; if (bl < 0) bl = 0;
         outline_ipoly(m, px, py, N, PACK(r, g, bl));
     }
+    PROF_ADD(PROF_FILL, t_fl);
     (void)glass;
 }
 
@@ -645,23 +661,26 @@ void inst_draw(Medium *m, Inst *o)
         int n8 = m->cy + jint((o->y - m->y - m->cy) * czy_ - (n2 - m->cz) * szy);
         if (m_ys(m, n8 + maxR, n3) > m->ih && m_ys(m, n8 - maxR, n3) < m->h) {
             const uint32_t np = mesh->npolys;
-            static int *g_rank, *g_order_buf; static uint32_t g_rank_cap;
-            if (np > g_rank_cap) { g_rank_cap = np; g_rank = realloc(g_rank, np * sizeof(int)); g_order_buf = realloc(g_order_buf, np * sizeof(int)); }
-            int *rank = g_rank, *order = g_order_buf;
-            memset(rank, 0, np * sizeof(int));
-            for (uint32_t i = 0; i < np; i++) {
-                for (uint32_t j = i + 1; j < np; j++) {
-                    if (o->av[i] != o->av[j]) { if (o->av[i] < o->av[j]) rank[i]++; else rank[j]++; }
-                    else if (i > j) rank[i]++; else rank[j]++;
-                }
-                order[rank[i]] = (int)i;
+            PROF_T(t_so);
+            /* painter order: larger av first, ties by lower index.  av barely changes between frames, so
+             * insertion-sorting last frame's order is ~O(np) and gives exactly the O(np^2) rank result. */
+            int *order = o->order;
+            const int *av = o->av;
+            for (uint32_t i = 1; i < np; i++) {
+                const int key = order[i], kav = av[key];
+                int j = (int)i - 1;
+                while (j >= 0 && (av[order[j]] < kav || (av[order[j]] == kav && order[j] > key))) { order[j + 1] = order[j]; j--; }
+                order[j + 1] = key;
             }
+            PROF_ADD(PROF_SORT, t_so);
+            PROF_T(t_pl);
             for (uint32_t i = 0; i < np; i++) {
                 g_polys_in++;
                 NFM_TRACE("poly", (int)order[i], (int)np);
                 plane_draw(m, o, (uint32_t)order[i], o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy,
                            o->noline || (mesh->flags & (PMF_STONECOLD | PMF_NEWSTONE)) != 0, n4);
             }
+            PROF_ADD(PROF_PLANE, t_pl);
             (void)shadow;
             int dsq = (m->x + m->cx - o->x) * (m->x + m->cx - o->x) + (m->z - o->z) * (m->z - o->z) +
                       (m->y + m->cy - o->y) * (m->y + m->cy - o->y);

@@ -112,6 +112,10 @@ static void blit_ge_scaled(int rw, int rh, void *vram_off)
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
 }
 
+#ifdef NFM_PROF
+static unsigned long long prof_now(void) { return sceKernelGetSystemTimeWide(); }
+#endif
+
 /* NaN/inf must produce values (as in Java), not FPU traps: clear the FCSR exception-enable bits */
 static void fpu_mask_exceptions(void)
 {
@@ -124,6 +128,9 @@ static void fpu_mask_exceptions(void)
 int main(void)
 {
     fpu_mask_exceptions();
+#ifdef NFM_PROF
+    g_prof_now = prof_now;
+#endif
     int th = sceKernelCreateThread("cb", cb_thread, 0x11, 0xFA0, 0, 0);
     if (th >= 0) sceKernelStartThread(th, 0, 0);
 
@@ -168,7 +175,10 @@ int main(void)
 
     uint32_t *vram[2] = { (uint32_t *)(0x40000000 | (uintptr_t)sceGeEdramGetAddr()),
                           (uint32_t *)(0x40000000 | ((uintptr_t)sceGeEdramGetAddr() + FBSZ)) };
-    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100, lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
+    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100, lowres = 0;
+#ifdef NFM_LOWRES
+    lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
+#endif
     unsigned prevb = 0;
     FILE *log = fopen("nfm_log.txt", "w");
 
@@ -212,11 +222,13 @@ int main(void)
         if (edge & PSP_CTRL_LTRIGGER) want = -1;
         if (edge & PSP_CTRL_RTRIGGER) want = 1;
         if (edge & PSP_CTRL_START) overlay = !overlay;
+#ifdef NFM_LOWRES   /* experimental, froze on real hardware: build with XCFLAGS=-DNFM_LOWRES to try */
         if (edge & PSP_CTRL_TRIANGLE) {   /* 480x270 <-> 400x225 (0.5x the game's native 800x450) */
             lowres = !lowres;
             f.w = lowres ? 400 : W; f.h = lowres ? 225 : H;
             med.scale = (float)f.w / 800.0f;
         }
+#endif
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = (b & PSP_CTRL_SQUARE) ? 120 : 40;
@@ -258,7 +270,12 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s far %d %dx%d %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
+            if (log) { fprintf(log, "%s far %d %dx%d %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0;
+#ifdef NFM_PROF
+                fprintf(log, "  prof/frame ms: sort %.1f  plane-total %.1f (shade %.1f fill %.1f => xform+cull %.1f)  [rot %.1f proj %.1f]\n", g_prof[PROF_SORT] / 1000.0 / frames, g_prof[PROF_PLANE] / 1000.0 / frames, g_prof[PROF_SHADE] / 1000.0 / frames, g_prof[PROF_FILL] / 1000.0 / frames, (g_prof[PROF_PLANE] - g_prof[PROF_SHADE] - g_prof[PROF_FILL]) / 1000.0 / frames, g_prof[PROF_ROT] / 1000.0 / frames, g_prof[PROF_PROJ] / 1000.0 / frames);
+                memset(g_prof, 0, sizeof g_prof);
+#endif
+                fflush(log); }
             frames = 0; tlast = now;
         }
     }

@@ -56,6 +56,7 @@ typedef struct {
     int dist;                    /* ContO.dist — painter key between objects */
     bool noline;
     int  *av;                    /* Plane.av persists between frames and feeds the sort */
+    int  *order;                 /* last frame's draw order (far -> near); re-sorted incrementally */
     float *hsb;                  /* 3 per poly */
     int  *col;                   /* 3 per poly, post-snap */
     float *deltaf, *projf;
@@ -72,5 +73,17 @@ extern int g_polys_in, g_polys_drawn;
 /* optional crash-bisect hook (NULL = off); platforms overwrite a marker with the latest call */
 extern void (*g_nfm_trace)(const char *tag, int a, int b);
 #define NFM_TRACE(tag, a, b) do { if (g_nfm_trace) g_nfm_trace(tag, a, b); } while (0)
+
+/* -DNFM_PROF: accumulate microseconds per phase (platform sets g_prof_now). */
+#ifdef NFM_PROF
+enum { PROF_SORT, PROF_PLANE, PROF_SHADE, PROF_FILL, PROF_ROT, PROF_PROJ, PROF_N };
+extern unsigned long long (*g_prof_now)(void);
+extern unsigned long long g_prof[PROF_N];
+#define PROF_T(v) unsigned long long v = g_prof_now()
+#define PROF_ADD(k, t0) (g_prof[k] += g_prof_now() - (t0))
+#else
+#define PROF_T(v) (void)0
+#define PROF_ADD(k, t0) (void)0
+#endif
 
 #endif
