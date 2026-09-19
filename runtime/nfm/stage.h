@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "medium.h"
+#include "mad.h"
 
 enum { ST_SET, ST_CHK, ST_FIX, ST_PILE, ST_MAXR, ST_MAXL, ST_MAXT, ST_MAXB };
 
@@ -38,7 +39,10 @@ typedef struct {
     int nmesh_slots;
     PMesh car_src, car;          /* optional test car (scene_add_car) */
     Inst *car_inst;
-    uint32_t skipped;            /* directives not yet instantiated (unknown ids, missing meshes) */
+    bool physics;                /* set before scene_build: also build trk/cp (collision boxes, checkpoints) */
+    Trackers trk;
+    CheckPoints cp;
+    uint32_t skipped;           /* directives not yet instantiated (unknown ids, missing meshes) */
 } Scene;
 
 /* looks pieces up in the pak as mesh/piece/<name>; needs env applied first (snap colours) */

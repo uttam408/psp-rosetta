@@ -10,7 +10,8 @@ Little-endian::
     i32 fadefrom, density, mountains, nlaps                             (absent = 0)
     OBJECTS nobjs * 24 bytes:  u8 op  u8 flags  i16 id  i32 a[5]
         op: 0 set 1 chk 2 fix 3 pile 4 maxr 5 maxl 6 maxt 7 maxb
-        set : a = x, z, rot            flags = ord of first suffix char (0 if none)
+        set : a = x, z, rot, ord(2nd suffix char)   flags = ord of first suffix char (0 if none)
+                (')p' path point; 'pt' 'pr' 'po' 'ph' = checkpoint sub-types -1 -2 -3 -4)
         chk : a = x, z, rot, y         flags bit0 = has y
         fix : a = x, z, y, rot         flags bit0 = special
         pile: a = the five raw args    (the runtime expands it; see ContO pile ctor)
@@ -58,8 +59,9 @@ def pack_pstg(st: dict[str, Any]) -> bytes:
         op = OPS.index(o["op"])
         flags, ident = 0, o.get("id", 0)
         if o["op"] == "set":
-            a = [o["x"], o["z"], o["rot"]]
-            flags = ord(o["flags"][0]) if o.get("flags") else 0
+            fl = o.get("flags") or ""
+            a = [o["x"], o["z"], o["rot"], ord(fl[1]) if len(fl) > 1 else 0]
+            flags = ord(fl[0]) if fl else 0
         elif o["op"] == "chk":
             a = [o["x"], o["z"], o["rot"], o["y"] or 0]
             flags = int(o.get("y") is not None)

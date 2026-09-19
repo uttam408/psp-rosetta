@@ -90,7 +90,15 @@ static bool load_piece(Scene *sc, int pi, bool *have, bool *tried)
 
 bool scene_build(Scene *sc, const Stage *s, Medium *m)
 {
+    bool phys = sc->physics;
     memset(sc, 0, sizeof *sc);
+    sc->physics = phys;
+    int ext[4] = { 0, 100, 0, 100 };     /* GameSparker's getint (maxr) / getint2 (maxl) / getint3 (maxt) / getint4 (maxb) */
+    if (phys) {
+        if (!trackers_init(&sc->trk)) return false;
+        sc->cp.nlaps = s->nlaps < 1 ? 1 : s->nlaps > 15 ? 15 : s->nlaps;
+        sc->cp.nsp = 0;
+    }
     sc->meshes = calloc(NPIECE_COUNT, sizeof(PMesh));
     bool have[NPIECE_COUNT] = { false }, tried[NPIECE_COUNT] = { false };
     uint32_t nwall = 0, npile = 0;
@@ -113,10 +121,21 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
             if (!load_piece(sc, WALL_PIECE, have, tried)) { sc->skipped++; continue; }
             int count = o->a[0], pos = o->a[1], off = o->a[2];
             static const int rot[4] = { 0, 180, 90, 270 };
+            bool along_z = o->op == ST_MAXR || o->op == ST_MAXL;
             for (int k = 0; k < count; k++) {
-                bool along_z = o->op == ST_MAXR || o->op == ST_MAXL;
                 int x = along_z ? pos : k * WALL_STEP + off, z = along_z ? k * WALL_STEP + off : pos;
                 inst_init(&sc->inst[sc->n++], m, &sc->meshes[WALL_PIECE], x, 250, z, rot[o->op - ST_MAXR], -1, -1);
+                if (phys) trackers_add_piece(&sc->trk, &sc->meshes[WALL_PIECE], x, 250, z, rot[o->op - ST_MAXR], false);
+            }
+            if (phys) {     /* the out-of-bounds slab behind the wall (dam 167) */
+                int half = count * WALL_STEP / 2, mid = half + off - WALL_STEP / 2;
+                ext[o->op - ST_MAXR] = pos;
+                switch (o->op) {
+                case ST_MAXR: trackers_add_wall(&sc->trk, pos + 500, -5000, mid, 600, half, 7100, 90, 0); break;
+                case ST_MAXL: trackers_add_wall(&sc->trk, pos - 500, -5000, mid, 600, half, 7100, -90, 0); break;
+                case ST_MAXT: trackers_add_wall(&sc->trk, mid, -5000, pos + 500, half, 600, 7100, 0, 90); break;
+                default:      trackers_add_wall(&sc->trk, mid, -5000, pos - 500, half, 600, 7100, 0, -90); break;
+                }
             }
             continue;
         }
@@ -127,7 +146,24 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
         if (o->op == ST_FIX) { y = o->a[2]; rot = o->a[3]; }
         inst_init(&sc->inst[sc->n], m, &sc->meshes[pi], x, y, z, rot, -1, -1);
         sc->inst[sc->n++].always = o->op == ST_CHK;
+        if (phys) {
+            CheckPoints *cp = &sc->cp;
+            trackers_add_piece(&sc->trk, &sc->meshes[pi], x, y, z, rot, (sc->meshes[pi].flags & PMF_DECOR) != 0);
+            if (o->op == ST_CHK && cp->n < MAD_MAXCP) {
+                cp->x[cp->n] = x; cp->z[cp->n] = z; cp->y[cp->n] = y;
+                cp->typ[cp->n] = rot == 0 ? 1 : 2;
+                cp->pcs = cp->n++;
+                cp->nsp++;
+            } else if (o->op == ST_SET && o->flags == 'p' && cp->n < MAD_MAXCP) {
+                int typ = 0;
+                switch (o->a[3]) { case 't': typ = -1; break; case 'r': typ = -2; break; case 'o': typ = -3; break; case 'h': typ = -4; break; }
+                cp->x[cp->n] = x; cp->z[cp->n] = z; cp->y[cp->n] = 0; cp->typ[cp->n++] = typ;
+            } else if (o->op == ST_FIX && cp->fn < MAD_MAXCP) {
+                cp->fx[cp->fn] = x; cp->fz[cp->fn] = z; cp->fy[cp->fn] = y; cp->roted[cp->fn++] = rot != 0;
+            }
+        }
     }
+    if (phys) trackers_divide(&sc->trk, ext[1], ext[0] - ext[1], ext[3], ext[2] - ext[3]);
     return true;
 }
 
@@ -149,6 +185,7 @@ void scene_free(Scene *sc)
     for (uint32_t i = 0; i < sc->npiles; i++) pile_free(&sc->piles[i]);
     if (sc->meshes) for (int i = 0; i < NPIECE_COUNT; i++) pmesh_free(&sc->meshes[i]);
     free(sc->inst); free(sc->meshes); free(sc->piles);
+    if (sc->physics) trackers_free(&sc->trk);
     memset(sc, 0, sizeof *sc);
 }
 

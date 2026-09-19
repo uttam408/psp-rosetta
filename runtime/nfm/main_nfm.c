@@ -63,6 +63,10 @@ static int stage_main(int argc, char **argv)
     medium_init(&med, &f);
     stage_apply_env(&st, &med);
     Scene sc;
+    memset(&sc, 0, sizeof sc);
+    const char *drive_car = NULL; int drive_frames = 0;
+    for (int i = 3; i + 2 < argc; i++)
+        if (strcmp(argv[i], "--drive") == 0) { drive_car = argv[i + 1]; drive_frames = atoi(argv[i + 2]); sc.physics = true; }
     scene_build(&sc, &st, &med);
     printf("%s \"%s\": %u directives, %u pieces placed, %u skipped\n", argv[2], st.name, st.nobjs, sc.n, sc.skipped);
 
@@ -98,6 +102,23 @@ static int stage_main(int argc, char **argv)
             Inst *c = scene_add_car(&sc, &med, id, cxp, czp, 0, 0xc83232, 0x282828);
             if (c) { c->wzy = spin; c->wxz = steer; }
         }
+    if (drive_car) {
+        int cn = -1;
+        for (int k = 0; k < 16; k++) if (strcmp(NFM_CARS[k].mesh, drive_car) == 0) cn = k;
+        char id[96]; snprintf(id, sizeof id, "mesh/car/%s", drive_car);
+        Inst *ci = cn < 0 ? NULL : scene_add_car(&sc, &med, id, 0, -760, 0, 0xc83232, 0x282828);
+        if (!ci) { fprintf(stderr, "cannot drive car %s\n", drive_car); return 1; }
+        static MadEnv env; static Mad mad; static CarObj co; Control ctl = { 0 };
+        env.im = 0; carobj_init(&co, ci); mad_init(&mad, &env, 0); mad_reseto(&mad, cn, &co, &sc.cp);
+        printf("trackers %d (%dx%d cells), checkpoints %d (nsp %d), laps %d\n", sc.trk.n, sc.trk.ncx + 1, sc.trk.ncz + 1, sc.cp.n, sc.cp.nsp, sc.cp.nlaps);
+        for (int fr = 0; fr < drive_frames; fr++) {
+            ctl.up = true; ctl.left = fr > 200 && fr < 230; ctl.wall = -1;
+            mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
+            if (fr % 20 == 0 || fr == drive_frames - 1)
+                printf("f%03d pos %6d %5d %6d xz %4d speed %7.2f clear %d hit %d\n", fr, ci->x, ci->y, ci->z, ci->xz, mad.speed, mad.clear, mad.hitmag);
+        }
+        camx = ci->x - (int)(m_sin(ci->xz) * 900); camz = ci->z - (int)(m_cos(ci->xz) * 900); yaw = ci->xz;
+    }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
 
     if (shot || bench) {
