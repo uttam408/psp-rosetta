@@ -468,6 +468,34 @@ static bool facing_away(const Medium *m, const int *ax, const int *ay, const int
     return b2;
 }
 
+/* (A,B) <- rot about (n,n2) by ang, applied to affine rows (3 coeffs + constant): exactly the rot() formula
+ * a' = n + (a-n)c - (b-n2)s ; b' = n2 + (a-n)s + (b-n2)c, but on whole rows instead of one vertex */
+static void rot_rows(float *A, float *B, float n, float n2, int ang)
+{
+    if (!ang) return;
+    float s = m_sin(ang), c = m_cos(ang), a[4], b[4];
+    for (int k = 0; k < 4; k++) { a[k] = A[k]; b[k] = B[k]; }
+    for (int k = 0; k < 3; k++) { A[k] = a[k] * c - b[k] * s; B[k] = a[k] * s + b[k] * c; }
+    A[3] = n  + (a[3] - n) * c - (b[3] - n2) * s;
+    B[3] = n2 + (a[3] - n) * s + (b[3] - n2) * c;
+}
+
+/* build the per-object float transform rows used by plane_draw when m->fastxf is set */
+static void xf_build(Medium *m, int n, int n2, int n3, int cxz, int cxy, int czy)
+{
+    float X[4] = { 1, 0, 0, (float)n }, Y[4] = { 0, 1, 0, (float)n2 }, Z[4] = { 0, 0, 1, (float)n3 };
+    rot_rows(X, Y, (float)n, (float)n2, cxy);
+    rot_rows(Y, Z, (float)n2, (float)n3, czy);
+    rot_rows(X, Z, (float)n, (float)n3, cxz);
+    memcpy(m->xf.Xo, X, sizeof X); memcpy(m->xf.Zo, Z, sizeof Z);
+    rot_rows(X, Z, (float)m->cx, (float)m->cz, m->xz);
+    memcpy(m->xf.X, X, sizeof X); memcpy(m->xf.Y1, Y, sizeof Y); memcpy(m->xf.Z1, Z, sizeof Z);
+    rot_rows(Y, Z, (float)m->cy, (float)m->cz, m->zy);
+    memcpy(m->xf.Y2, Y, sizeof Y); memcpy(m->xf.Z2, Z, sizeof Z);
+}
+
+static inline float dot4(const float *r, float x, float y, float z) { return r[0] * x + r[1] * y + r[2] * z + r[3]; }
+
 /* rebuild the fog lookup when the fog colour/density changed */
 static void fog_table_sync(Medium *m)
 {
@@ -496,10 +524,10 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     if (N < 3) return;
     PROF_T(t_rot);
     int ax[MAXN], az[MAXN], ay[MAXN];
-    for (int i = 0; i < N; i++) {
-        const PmVert *s = &mesh->verts[mesh->indices[P->first_index + i]];
-        ax[i] = (int)s->x + n; ay[i] = (int)s->y + n2; az[i] = (int)s->z + n3;
-    }
+    int pay[MAXN], paz[MAXN];
+    const bool rotated = cxy != 0 || czy != 0 || cxz != 0;
+    const PmVert *pv[MAXN];
+    for (int i = 0; i < N; i++) pv[i] = &mesh->verts[mesh->indices[P->first_index + i]];
     bool b = noline;
     const int gr0 = P->gr, fs = P->fs, light = P->light;
     const bool solo = P->no_outline != 0;
@@ -509,24 +537,45 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     const bool nocol = o->col[pi*3] == o->col[pi*3+1] && o->col[pi*3+1] == o->col[pi*3+2];
     (void)nocol; (void)light;
 
-    rot(m, ax, ay, n, n2, cxy, N);
-    rot(m, ay, az, n2, n3, czy, N);
-    rot(m, ax, az, n, n3, cxz, N);
-    if (cxy != 0 || czy != 0 || cxz != 0) {
-        float pj = 1.0f;
-        for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++) if (j != i)
-                pj *= sqrt100f((ax[i]-ax[j])*(ax[i]-ax[j]) + (az[i]-az[j])*(az[i]-az[j]));
-        o->projf[pi] = pj / 3.0f;
-        o->n70ok[pi] = 0;
+    if (m->fastxf) {
+        for (int i = 0; i < N; i++) {
+            float x = pv[i]->x, y = pv[i]->y, z = pv[i]->z;
+            ax[i] = (int)dot4(m->xf.X, x, y, z);
+            pay[i] = (int)dot4(m->xf.Y2, x, y, z);
+            paz[i] = (int)dot4(m->xf.Z2, x, y, z);
+        }
+        if (rotated) {
+            int ox[3], oz[3];
+            for (int i = 0; i < 3; i++) {
+                float x = pv[i]->x, y = pv[i]->y, z = pv[i]->z;
+                ox[i] = (int)dot4(m->xf.Xo, x, y, z); oz[i] = (int)dot4(m->xf.Zo, x, y, z);
+            }
+            float pj = 1.0f;
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++) if (j != i)
+                    pj *= sqrt100f((ox[i]-ox[j])*(ox[i]-ox[j]) + (oz[i]-oz[j])*(oz[i]-oz[j]));
+            o->projf[pi] = pj / 3.0f;
+            o->n70ok[pi] = 0;
+        }
+    } else {
+        for (int i = 0; i < N; i++) { ax[i] = (int)pv[i]->x + n; ay[i] = (int)pv[i]->y + n2; az[i] = (int)pv[i]->z + n3; }
+        rot(m, ax, ay, n, n2, cxy, N);
+        rot(m, ay, az, n2, n3, czy, N);
+        rot(m, ax, az, n, n3, cxz, N);
+        if (rotated) {
+            float pj = 1.0f;
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++) if (j != i)
+                    pj *= sqrt100f((ax[i]-ax[j])*(ax[i]-ax[j]) + (az[i]-az[j])*(az[i]-az[j]));
+            o->projf[pi] = pj / 3.0f;
+            o->n70ok[pi] = 0;
+        }
+        rot(m, ax, az, m->cx, m->cz, m->xz, N);
+        /* screen-visibility first, on pitch-rotated copies: behind-camera / off-screen polygons leave
+         * here before the (expensive) facing test.  Java updates Plane.av only after this point too. */
+        memcpy(pay, ay, N * sizeof(int)); memcpy(paz, az, N * sizeof(int));
+        rot(m, pay, paz, m->cy, m->cz, m->zy, N);
     }
-    rot(m, ax, az, m->cx, m->cz, m->xz, N);
-
-    /* screen-visibility first, on pitch-rotated copies: behind-camera / off-screen polygons leave
-     * here before the (expensive) facing test.  Java updates Plane.av only after this point too. */
-    int pay[MAXN], paz[MAXN];
-    memcpy(pay, ay, N * sizeof(int)); memcpy(paz, az, N * sizeof(int));
-    rot(m, pay, paz, m->cy, m->cz, m->zy, N);
     PROF_ADD(PROF_ROT, t_rot);
     PROF_T(t_prj);
     int px[MAXN], py[MAXN];
@@ -550,7 +599,12 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
 
     bool b2 = false;
     int bay[MAXN], baz[MAXN];
-    memcpy(bay, ay, N * sizeof(int)); memcpy(baz, az, N * sizeof(int));
+    if (m->fastxf) {
+        for (int i = 0; i < N; i++) {
+            float x = pv[i]->x, y = pv[i]->y, z = pv[i]->z;
+            bay[i] = (int)dot4(m->xf.Y1, x, y, z); baz[i] = (int)dot4(m->xf.Z1, x, y, z);
+        }
+    } else { memcpy(bay, ay, N * sizeof(int)); memcpy(baz, az, N * sizeof(int)); }
     memcpy(ay, pay, N * sizeof(int)); memcpy(az, paz, N * sizeof(int));
     if (c54 != 0) b = true;
     if (vis && n6 != -1) {
@@ -620,7 +674,6 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
      * so NaN is tracked in `nan70` and never touches a float compare. */
     float n70;
     bool nan70 = false;
-    const bool rotated = cxy != 0 || czy != 0 || cxz != 0;
     if (!rotated && o->n70ok[pi]) { n70 = o->n70c[pi]; nan70 = o->n70ok[pi] == 2; }
     else {
         if (o->deltaf[pi] == 0.0f) {
@@ -727,6 +780,7 @@ void inst_draw(Medium *m, Inst *o)
                 order[j + 1] = key;
             }
             PROF_ADD(PROF_SORT, t_so);
+            if (m->fastxf) xf_build(m, o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy);
             PROF_T(t_pl);
             for (uint32_t i = 0; i < np; i++) {
                 g_polys_in++;

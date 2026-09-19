@@ -175,6 +175,11 @@ int main(void)
 
     uint32_t *vram[2] = { (uint32_t *)(0x40000000 | (uintptr_t)sceGeEdramGetAddr()),
                           (uint32_t *)(0x40000000 | ((uintptr_t)sceGeEdramGetAddr() + FBSZ)) };
+#ifdef NFM_FASTXF_DEFAULT
+    bool fastxf = true;
+#else
+    bool fastxf = false;
+#endif
     int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100, lowres = 0;
 #ifdef NFM_LOWRES
     lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
@@ -202,6 +207,7 @@ int main(void)
             step("stage_load -> %d", (int)loaded);
             if (!loaded) { want = 1; continue; }
             medium_init(&med, &f);
+            med.fastxf = fastxf;
             stage_apply_env(&st, &med);
             med.far_pct = far_pct;
             step("medium ready, building scene");
@@ -222,8 +228,9 @@ int main(void)
         if (edge & PSP_CTRL_LTRIGGER) want = -1;
         if (edge & PSP_CTRL_RTRIGGER) want = 1;
         if (edge & PSP_CTRL_START) overlay = !overlay;
+        if (edge & PSP_CTRL_TRIANGLE) med.fastxf = fastxf = !fastxf;   /* float-composed transform on/off (A/B on device) */
 #ifdef NFM_LOWRES   /* experimental, froze on real hardware: build with XCFLAGS=-DNFM_LOWRES to try */
-        if (edge & PSP_CTRL_TRIANGLE) {   /* 480x270 <-> 400x225 (0.5x the game's native 800x450) */
+        if (edge & PSP_CTRL_CIRCLE) {   /* 480x270 <-> 400x225 (0.5x the game's native 800x450) */
             lowres = !lowres;
             f.w = lowres ? 400 : W; f.h = lowres ? 225 : H;
             med.scale = (float)f.w / 800.0f;
@@ -257,7 +264,7 @@ int main(void)
         if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
-            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% %dx%d ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, f.w, f.h);
+            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% %dx%d %s ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, f.w, f.h, med.fastxf ? "FAST" : "exact");
         }
         sceDisplayWaitVblankStart();
         if (first) { step("first blit, setting framebuf"); }
@@ -270,7 +277,7 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s far %d %dx%d %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0;
+            if (log) { fprintf(log, "%s far %d %dx%d %s %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0;
 #ifdef NFM_PROF
                 fprintf(log, "  prof/frame ms: sort %.1f  plane-total %.1f (shade %.1f fill %.1f => xform+cull %.1f)  [rot %.1f proj %.1f]\n", g_prof[PROF_SORT] / 1000.0 / frames, g_prof[PROF_PLANE] / 1000.0 / frames, g_prof[PROF_SHADE] / 1000.0 / frames, g_prof[PROF_FILL] / 1000.0 / frames, (g_prof[PROF_PLANE] - g_prof[PROF_SHADE] - g_prof[PROF_FILL]) / 1000.0 / frames, g_prof[PROF_ROT] / 1000.0 / frames, g_prof[PROF_PROJ] / 1000.0 / frames);
                 memset(g_prof, 0, sizeof g_prof);

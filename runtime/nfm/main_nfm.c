@@ -78,6 +78,7 @@ static int stage_main(int argc, char **argv)
                 *v[k] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--bench") == 0) bench = true;
     }
+    for (int i = 3; i < argc; i++) if (strcmp(argv[i], "--fast") == 0) med.fastxf = true;   /* float-composed transform */
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
 
     if (shot || bench) {
