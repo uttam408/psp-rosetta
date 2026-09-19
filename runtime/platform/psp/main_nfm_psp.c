@@ -2,7 +2,7 @@
  *   assets.pak is read from the EBOOT's directory.
  *   Analog stick: move (Ly) / strafe (Lx).  D-pad L/R: turn.  D-pad U/D: pitch.
  *   Cross/Circle: camera down/up.  Square: fast.  L/R trigger: previous/next stage.
- *   Select: cycle draw distance 100/80/60/40/20%.  Start: toggle fps overlay.  fps/poly stats are also appended to nfm_log.txt. */
+ *   Select: cycle draw distance 100/80/60/40/20%.  Start: toggle fps overlay.  Launch flags: R=333 MHz, Square=CPU blit, L=trace.  fps/poly stats are also appended to nfm_log.txt. */
 #include <pspkernel.h>
 #include <pspdebug.h>
 #include <pspdisplay.h>
@@ -10,6 +10,7 @@
 #include <pspge.h>
 #include <psppower.h>
 #include <psputils.h>
+#include <pspgu.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -56,14 +57,26 @@ static void trace_marker(const char *tag, int a, int b)
     fflush(g_trace_f);
 }
 
-static uint32_t g_px[W * H];
+static uint32_t __attribute__((aligned(16))) g_px[W * H];
+static unsigned int __attribute__((aligned(16))) g_gelist[4096];
 static char g_names[64][96];
 static int g_nstages;
 
-/* g_px is already PSP ABGR8888 (built with -DNFM_ABGR): plain row copy into VRAM */
-static void blit(uint32_t *vram)
+/* g_px is already PSP ABGR8888.  The CPU only flushes its cache; the GE copies RAM -> VRAM
+ * (a CPU memcpy into VRAM cost ~8 ms/frame on hardware). */
+static void blit_cpu(uint32_t *vram_uncached)
 {
-    for (int y = 0; y < H; y++) memcpy(vram + y * STRIDE, g_px + y * W, W * 4);
+    for (int y = 0; y < H; y++) memcpy(vram_uncached + y * STRIDE, g_px + y * W, W * 4);
+}
+
+static void blit_ge(uint32_t *vram_phys)
+{
+    sceKernelDcacheWritebackRange(g_px, sizeof g_px);
+    sceGuStart(GU_DIRECT, g_gelist);
+    sceGuCopyImage(GU_PSM_8888, 0, 0, W, H, W, g_px, 0, 0, STRIDE, vram_phys);
+    sceGuTexSync();
+    sceGuFinish();
+    sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
 }
 
 /* NaN/inf must produce values (as in Java), not FPU traps: clear the FCSR exception-enable bits */
@@ -86,11 +99,13 @@ int main(void)
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     SceCtrlData p0; sceCtrlReadBufferPositive(&p0, 1);
     int fast = (p0.Buttons & PSP_CTRL_RTRIGGER) != 0;
+    int cpu_blit = (p0.Buttons & PSP_CTRL_SQUARE) != 0;   /* hold Square at launch: old CPU memcpy blit, for A/B timing */
     int trace_on = (p0.Buttons & PSP_CTRL_LTRIGGER) != 0;   /* hold L at launch: crash-bisect trace of frame 1 (slow) */
     if (fast) scePowerSetClockFrequency(333, 333, 166);   /* default stays at the system's 222 */
-    step("clock (R held at launch = 333): cpu %d bus %d", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency());
+    step("clock (R held at launch = 333): cpu %d bus %d; blit=%s", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency(), cpu_blit ? "cpu" : "ge");
     pspDebugScreenInit();
     pspDebugScreenPrintf("NFM viewer starting...\n");
+    sceGuInit();
     if (!pak_open("assets.pak")) {
         pspDebugScreenPrintf("assets.pak not found next to EBOOT.PBP\n");
         sceKernelDelayThread(4 * 1000 * 1000);
@@ -184,8 +199,8 @@ int main(void)
         if (first && trace_on) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         unsigned long long t_b = sceKernelGetSystemTimeWide();
 
-        uint32_t *fb = vram[cur];
-        blit(fb);
+        if (cpu_blit) blit_cpu(vram[cur]);
+        else blit_ge((uint32_t *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ));
         unsigned long long t_c = sceKernelGetSystemTimeWide();
         acc_draw += t_b - t_a; acc_blit += t_c - t_b;
         if (overlay) {
@@ -204,7 +219,7 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s far %d %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
+            if (log) { fprintf(log, "%s far %d %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, cpu_blit ? "cpublit" : "geblit", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
             frames = 0; tlast = now;
         }
     }
