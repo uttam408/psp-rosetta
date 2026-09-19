@@ -194,6 +194,9 @@ int main(void)
     FILE *log = fopen("nfm_log.txt", "w");
 
     static Stage st; static Scene sc; static Medium med;
+    static MadEnv menv; static Mad mad; static CarObj co;
+    bool driving = false; Inst *dci = NULL;
+    unsigned long long tphys = 0;
     bool loaded = false;
     int first = 1;
     Frame f = { lowres ? 400 : W, lowres ? 225 : H, g_px };
@@ -202,7 +205,7 @@ int main(void)
 
     while (g_running) {
         if (!loaded || want) {
-            if (loaded) { scene_free(&sc); stage_free(&st); }
+            if (loaded) { if (driving) carobj_free(&co); driving = false; dci = NULL; scene_free(&sc); stage_free(&st); }
             stage_i = (stage_i + want + g_nstages) % g_nstages; want = 0;
             char id[112];
             snprintf(id, sizeof id, "%s.pstg", g_names[stage_i]);
@@ -218,8 +221,17 @@ int main(void)
             stage_apply_env(&st, &med);
             med.far_pct = far_pct;
             step("medium ready, building scene");
+            sc.physics = true;
             scene_build(&sc, &st, &med);
             step("scene built: %u pieces", (unsigned)sc.n);
+            dci = scene_add_car(&sc, &med, "mesh/car/audir8", 0, -760, 0, 0xc83232, 0x282828);
+            if (dci && carobj_init(&co, dci)) {
+                memset(&menv, 0, sizeof menv);
+                mad_init(&mad, &menv, 0);
+                mad_reseto(&mad, 12, &co, &sc.cp);   /* audir8 = CarDefine index 12 */
+                driving = true; tphys = sceKernelGetSystemTimeWide();
+                step("car ready: %d trackers, %d checkpoints", sc.trk.n, sc.cp.n);
+            }
             int camx = 0, camz = 0;
             if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
             med.x = camx - med.cx; med.z = camz; med.y = -300; med.xz = 0; med.zy = 10;
@@ -244,6 +256,17 @@ int main(void)
         }
 #endif
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
+        if (driving) {
+            /* D-pad / analog: up = gas, down = brake, left/right = steer, Cross = handbrake; physics ticks at the original's 30 Hz */
+            Control ctl = { .left = (b & PSP_CTRL_LEFT) || ax < -40, .right = (b & PSP_CTRL_RIGHT) || ax > 40,
+                            .up = (b & PSP_CTRL_UP) || ay < -40, .down = (b & PSP_CTRL_DOWN) || ay > 40,
+                            .handb = (b & PSP_CTRL_CROSS) != 0, .zyinv = false, .wall = -1 };
+            unsigned long long tn = sceKernelGetSystemTimeWide();
+            for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
+            if (tn - tphys >= 33333) tphys = tn;
+            med.x = dci->x - (int)(m_sin(dci->xz) * 900) - med.cx; med.z = dci->z - (int)(m_cos(dci->xz) * 900);
+            med.y = dci->y - 490; med.xz = dci->xz; med.zy = 10;
+        } else {
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = (b & PSP_CTRL_SQUARE) ? 120 : 40;
         int fwd = -ay * sp / 128, side = ax * sp / 128;
@@ -255,6 +278,7 @@ int main(void)
         if (b & PSP_CTRL_DOWN)  med.zy -= med.zy > -90;
         if (b & PSP_CTRL_CROSS)  med.y += sp;
         if (b & PSP_CTRL_CIRCLE) med.y -= sp;
+        }
 
         g_polys_in = g_polys_drawn = 0;
         unsigned long long t_a = sceKernelGetSystemTimeWide();
@@ -272,6 +296,10 @@ int main(void)
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
             pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% %dx%d %s ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, f.w, f.h, med.fastxf ? "FAST" : "exact");
+            if (driving) {
+                pspDebugScreenSetXY(0, 1);
+                pspDebugScreenPrintf("speed %3d  cp %d  hit %d ", (int)mad.speed, mad.env->checkpoint, mad.hitmag);
+            }
         }
         sceDisplayWaitVblankStart();
         if (first) { step("first blit, setting framebuf"); }
@@ -285,6 +313,7 @@ int main(void)
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
             if (log) { fprintf(log, "%s far %d %dx%d %s %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0;
+            if (log && driving) fprintf(log, "  drive: pos %d,%d,%d speed %.1f cp %d hit %d\n", dci->x, dci->y, dci->z, mad.speed, mad.env->checkpoint, mad.hitmag);
 #ifdef NFM_PROF
                 fprintf(log, "  prof/frame ms: sort %.1f  plane-total %.1f (shade %.1f fill %.1f => xform+cull %.1f)  [rot %.1f proj %.1f]\n", g_prof[PROF_SORT] / 1000.0 / frames, g_prof[PROF_PLANE] / 1000.0 / frames, g_prof[PROF_SHADE] / 1000.0 / frames, g_prof[PROF_FILL] / 1000.0 / frames, (g_prof[PROF_PLANE] - g_prof[PROF_SHADE] - g_prof[PROF_FILL]) / 1000.0 / frames, g_prof[PROF_ROT] / 1000.0 / frames, g_prof[PROF_PROJ] / 1000.0 / frames);
                 memset(g_prof, 0, sizeof g_prof);
