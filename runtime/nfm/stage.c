@@ -124,7 +124,8 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
         int x = o->a[0], z = o->a[1], rot = o->a[2], y = 250;      /* ground - grat (grat=0 for pieces) */
         if (o->op == ST_CHK && (o->flags & 1)) y = o->a[3];
         if (o->op == ST_FIX) { y = o->a[2]; rot = o->a[3]; }
-        inst_init(&sc->inst[sc->n++], m, &sc->meshes[pi], x, y, z, rot, -1, -1);
+        inst_init(&sc->inst[sc->n], m, &sc->meshes[pi], x, y, z, rot, -1, -1);
+        sc->inst[sc->n++].always = o->op == ST_CHK;
     }
     return true;
 }

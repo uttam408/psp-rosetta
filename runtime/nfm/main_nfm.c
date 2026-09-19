@@ -80,6 +80,8 @@ static int stage_main(int argc, char **argv)
     }
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "--fast") == 0) med.fastxf = true;   /* float-composed transform */
+        if (strcmp(argv[i], "--far") == 0 && i + 1 < argc) med.far_pct = atoi(argv[i + 1]);
+        if (strcmp(argv[i], "--nochkalways") == 0) for (uint32_t k = 0; k < sc.n; k++) sc.inst[k].always = false;
         if (strcmp(argv[i], "--tiny") == 0 && i + 2 < argc) { med.tiny = atoi(argv[i + 1]); med.tinyfar = atoi(argv[i + 2]); }
     }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;

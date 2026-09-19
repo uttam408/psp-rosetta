@@ -60,6 +60,7 @@ typedef struct {
     int x, y, z, xz, xy, zy;
     int dist;                    /* ContO.dist — painter key between objects */
     bool noline;
+    bool always;                 /* checkpoint: never culled by view distance (or the tiny-poly rule); still culled behind/off-screen */
     int  *av;                    /* Plane.av persists between frames and feeds the sort */
     float *hpqt;                 /* per poly: HSB->RGB constants (1-s, 1-s*f, 1-s*(1-f)) */
     uint8_t *hsec, *n70ok;       /* hue sector (255 = grey); n70 cache state: 0 none, 1 valid, 2 valid NaN */

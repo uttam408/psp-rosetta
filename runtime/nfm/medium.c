@@ -618,7 +618,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         g_st[7]++;
 #endif
         if (d3 == 0 || d4 == 0) vis = false;
-        else if (m->tinyfar > 0 && c54 == 0) {
+        else if (m->tinyfar > 0 && c54 == 0 && !o->always) {
             int zmn2 = paz[0];
             for (int i = 1; i < N; i++) if (paz[i] < zmn2) zmn2 = paz[i];
             const int D = (int)((int64_t)m->fade[disline] * m->far_pct / 100);
@@ -655,7 +655,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         int cy = (ymx + ymn) / 2, cx = (xmx + xmn) / 2, czz = (zmx + zmn) / 2;
         o->av[pi] = isqrt_n((m->cy - cy) * (m->cy - cy) + (m->cx - cx) * (m->cx - cx) + czz * czz + gr * gr * gr);
         int av = o->av[pi];
-        if (m->trk == 0 && (av > (int)((int64_t)m->fade[disline] * m->far_pct / 100) || av == 0)) vis = false;
+        if (m->trk == 0 && ((av > (int)((int64_t)m->fade[disline] * m->far_pct / 100) && !o->always) || av == 0)) vis = false;
         if (lastmaf == -111 && av > 4500 && !road) vis = false;
         if (lastmaf == -111 && av > 1500) b = true;
         if (av > 3000 && m->adv <= 900) b = true;
@@ -772,7 +772,7 @@ void inst_draw(Medium *m, Inst *o)
     int n3 = m->cz + jint((o->y - m->y - m->cy) * szy + (n2 - m->cz) * czy_);
     int n4 = oxs(m, n + maxR, n3) - oxs(m, n - maxR, n3);
     if (oxs(m, n + maxR * 2, n3) > m->iw && oxs(m, n - maxR * 2, n3) < m->w && n3 > -maxR &&
-        (n3 < (int)((int64_t)m->fade[disline] * m->far_pct / 100) + maxR || m->trk != 0) && (n4 > mesh->disp || m->trk != 0) && !(decor && false)) {
+        (n3 < (int)((int64_t)m->fade[disline] * m->far_pct / 100) + maxR || m->trk != 0 || o->always) && (n4 > mesh->disp || m->trk != 0 || o->always) && !(decor && false)) {
         int n8 = m->cy + jint((o->y - m->y - m->cy) * czy_ - (n2 - m->cz) * szy);
         if (m_ys(m, n8 + maxR, n3) > m->ih && m_ys(m, n8 - maxR, n3) < m->h) {
             const uint32_t np = mesh->npolys;
