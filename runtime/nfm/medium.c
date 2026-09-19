@@ -415,6 +415,7 @@ static bool facing_away(const Medium *m, const int *ax, const int *ay, const int
     bool b2 = false;
     int sx24[MAXN], sy25[MAXN];
     int n40 = 500;
+    NFM_TRACE("fa proj", N, 0);
     for (int i = 0; i < N; i++) { sx24[i] = m_xs(m, ax[i], az[i]); sy25[i] = m_ys(m, ay[i], az[i]); }
     int n42 = 0, n43 = 1;
     for (int i = 0; i < N; i++)
@@ -422,6 +423,7 @@ static bool facing_away(const Medium *m, const int *ax, const int *ay, const int
             if (i != j && iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]) < n40) {
                 n43 = i; n42 = j; n40 = iabs(sx24[i] - sx24[j]) - iabs(sy25[i] - sy25[j]);
             }
+    NFM_TRACE("fa pick", n42, n43);
     if (sy25[n42] < sy25[n43]) { int t = n42; n42 = n43; n43 = t; }
 #define SPY(i) isqrt_n((ax[i] - m->cx) * (ax[i] - m->cx) + az[i] * az[i])
     if (SPY(n42) > SPY(n43)) {
@@ -546,8 +548,11 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     NFM_TRACE("shade", (int)pi, 0);
 
     int av = o->av[pi];
+    NFM_TRACE("b2 begin", (int)pi, N);
     if (!(gr0 == -14 || gr0 == -15 || gr0 == -12)) b2 = facing_away(m, ax, bay, baz, N);
+    NFM_TRACE("b2 done", (int)pi, (int)b2);
     float n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
+    NFM_TRACE("n70 raw", (int)pi, (int)(n70 * 1000));
     if (b && !solo) {
         bool b3 = false;
         if (n70 > 1.0f) { if (n70 >= 1.27) b3 = true; n70 = 1.0f; }
@@ -565,7 +570,9 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (n70 < 0.6 || b2) n70 = 0.6f;
     }
     int r, g, bl;
+    NFM_TRACE("hsb in", (int)(o->hsb[pi*3+2] * 1000), (int)(n70 * 1000));
     hsb2rgb(o->hsb[pi*3], o->hsb[pi*3+1], o->hsb[pi*3+2] * n70, &r, &g, &bl);
+    NFM_TRACE("hsb out", r, g);
     if (m->trk == 0)
         for (int i = 0; i < 16; i++)
             if (av > m->fade[i]) {
@@ -573,6 +580,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
                 g  = (g  * m->fogd + m->cfade[1]) / (m->fogd + 1);
                 bl = (bl * m->fogd + m->cfade[2]) / (m->fogd + 1);
             }
+    NFM_TRACE("fog done", av, m->fogd);
     NFM_TRACE("fill", (int)pi, N);
     fill_ipoly(m, px, py, N, r, g, bl);
     g_polys_drawn++;
