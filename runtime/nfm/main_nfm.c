@@ -90,6 +90,9 @@ static int stage_main(int argc, char **argv)
         if (shot) {
             bool ok = save_bmp(&f, out);
             printf("shot: %d/%d polys drawn -> %s (%s)\n", g_polys_drawn, g_polys_in, out, ok ? "ok" : "FAIL");
+#ifdef NFM_STATS
+            { extern int g_st[8]; printf("stats: behind %d offscreen %d passed-vis-tests %d rejected-after(thin/av/etc) %d thin-test-run %d\n", g_st[0], g_st[1], g_st[6], g_st[2], g_st[7]); }
+#endif
             return ok ? 0 : 2;
         }
         return 0;

@@ -22,6 +22,8 @@ typedef struct {
     int iw, ih, w, h;      /* 0, 0, 800, 450 */
     int ground, skyline;
     int fade[16], fogd;
+    uint8_t fogtab[3][17][256];   /* fogtab[ch][k][v]: v after k fog steps (exact integer recurrence) */
+    int fogtab_sig[4]; bool fogtab_ok;
     int far_pct;   /* draw-distance cull scale in percent (100 = original Java behaviour) */
     int cfade[3], csky[3], cgrnd[3], crgrnd[3], cpol[3], osky[3], ogrnd[3], snap[3];
     int texture[4];
@@ -56,6 +58,9 @@ typedef struct {
     int dist;                    /* ContO.dist — painter key between objects */
     bool noline;
     int  *av;                    /* Plane.av persists between frames and feeds the sort */
+    float *hpqt;                 /* per poly: HSB->RGB constants (1-s, 1-s*f, 1-s*(1-f)) */
+    uint8_t *hsec, *n70ok;       /* hue sector (255 = grey); n70 cache state: 0 none, 1 valid, 2 valid NaN */
+    float *n70c;                 /* cached projf/deltaf+0.3 for non-rotating objects */
     int  *order;                 /* last frame's draw order (far -> near); re-sorted incrementally */
     float *hsb;                  /* 3 per poly */
     int  *col;                   /* 3 per poly, post-snap */

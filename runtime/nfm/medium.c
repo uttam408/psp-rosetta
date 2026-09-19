@@ -7,6 +7,9 @@
 
 void (*g_nfm_trace)(const char *, int, int);
 int g_polys_in, g_polys_drawn;
+#ifdef NFM_STATS
+int g_st[8];
+#endif
 #ifdef NFM_PROF
 unsigned long long (*g_prof_now)(void);
 unsigned long long g_prof[PROF_N];
@@ -78,25 +81,30 @@ static void rgb2hsb(int r, int g, int b, float *hsb)
     hsb[0] = hue; hsb[1] = sat; hsb[2] = bri;
 }
 
-static void hsb2rgb(float hue, float sat, float bri, int *R, int *G, int *B)
+/* hsb2rgb with the bri-independent terms precomputed (bit-identical: same float ops, same order) */
+static void hsb_prep(const float *hsb, float *pqt, uint8_t *sec)
 {
-    int r = 0, g = 0, b = 0;
-    if (sat == 0.0f) r = g = b = (int)(bri * 255.0f + 0.5f);
-    else {
-        float h = (hue - floorf(hue)) * 6.0f, f = h - floorf(h);
-        float p = bri * (1.0f - sat), q = bri * (1.0f - sat * f), t = bri * (1.0f - (sat * (1.0f - f)));
-        float rr, gg, bb;
-        switch ((int)h) {
-        case 0: rr = bri; gg = t;   bb = p;   break;
-        case 1: rr = q;   gg = bri; bb = p;   break;
-        case 2: rr = p;   gg = bri; bb = t;   break;
-        case 3: rr = p;   gg = q;   bb = bri; break;
-        case 4: rr = t;   gg = p;   bb = bri; break;
-        default:rr = bri; gg = p;   bb = q;   break;
-        }
-        r = (int)(rr * 255.0f + 0.5f); g = (int)(gg * 255.0f + 0.5f); b = (int)(bb * 255.0f + 0.5f);
+    float sat = hsb[1];
+    if (sat == 0.0f) { *sec = 255; return; }
+    float h = (hsb[0] - floorf(hsb[0])) * 6.0f, f = h - floorf(h);
+    pqt[0] = 1.0f - sat; pqt[1] = 1.0f - sat * f; pqt[2] = 1.0f - (sat * (1.0f - f));
+    int sc = (int)h; if (sc < 0 || sc > 5) sc = 5;
+    *sec = (uint8_t)sc;
+}
+
+static void hsb2rgb_pre(float bri, const float *pqt, int sec, int *R, int *G, int *B)
+{
+    if (sec == 255) { *R = *G = *B = (int)(bri * 255.0f + 0.5f); return; }
+    float p = bri * pqt[0], q = bri * pqt[1], t = bri * pqt[2], rr, gg, bb;
+    switch (sec) {
+    case 0: rr = bri; gg = t;   bb = p;   break;
+    case 1: rr = q;   gg = bri; bb = p;   break;
+    case 2: rr = p;   gg = bri; bb = t;   break;
+    case 3: rr = p;   gg = q;   bb = bri; break;
+    case 4: rr = t;   gg = p;   bb = bri; break;
+    default:rr = bri; gg = p;   bb = q;   break;
     }
-    *R = r; *G = g; *B = b;
+    *R = (int)(rr * 255.0f + 0.5f); *G = (int)(gg * 255.0f + 0.5f); *B = (int)(bb * 255.0f + 0.5f);
 }
 
 /* ---- Medium ------------------------------------------------------------- */
@@ -394,6 +402,7 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
     o->noline = false;
     size_t n = mesh->npolys;
     o->av = calloc(n, sizeof(int)); o->order = malloc((n ? n : 1) * sizeof(int));
+    o->hpqt = calloc(n * 3 + 1, sizeof(float)); o->hsec = calloc(n + 1, 1); o->n70ok = calloc(n + 1, 1); o->n70c = calloc(n + 1, sizeof(float));
     for (size_t i = 0; i < n; i++) o->order[i] = (int)i;
     o->hsb = calloc(n * 3, sizeof(float)); o->col = calloc(n * 3, sizeof(int));
     o->deltaf = calloc(n, sizeof(float)); o->projf = calloc(n, sizeof(float)); o->typ = calloc(n, 1);
@@ -417,13 +426,14 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
             o->hsb[i * 3 + 1] += 0.05f;
             if (o->hsb[i * 3 + 1] > 1.0f) o->hsb[i * 3 + 1] = 1.0f;
         }
+        hsb_prep(&o->hsb[i * 3], &o->hpqt[i * 3], &o->hsec[i]);
         calc_deltaf_typ(mesh, p, &o->deltaf[i], &o->typ[i], &o->projf[i]);
     }
 }
 
 void inst_free(Inst *o)
 {
-    free(o->av); free(o->order); free(o->hsb); free(o->col); free(o->deltaf); free(o->projf); free(o->typ);
+    free(o->av); free(o->order); free(o->hpqt); free(o->hsec); free(o->n70ok); free(o->n70c); free(o->hsb); free(o->col); free(o->deltaf); free(o->projf); free(o->typ);
     memset(o, 0, sizeof *o);
 }
 
@@ -458,6 +468,24 @@ static bool facing_away(const Medium *m, const int *ax, const int *ay, const int
     return b2;
 }
 
+/* rebuild the fog lookup when the fog colour/density changed */
+static void fog_table_sync(Medium *m)
+{
+    if (m->fogtab_ok && m->fogtab_sig[0] == m->fogd && m->fogtab_sig[1] == m->cfade[0] &&
+        m->fogtab_sig[2] == m->cfade[1] && m->fogtab_sig[3] == m->cfade[2]) return;
+    for (int c = 0; c < 3; c++)
+        for (int v = 0; v < 256; v++) {
+            int x = v;
+            m->fogtab[c][0][v] = (uint8_t)x;
+            for (int k = 1; k < 17; k++) {
+                x = (x * m->fogd + m->cfade[c]) / (m->fogd + 1);
+                m->fogtab[c][k][v] = (uint8_t)x;
+            }
+        }
+    m->fogtab_sig[0] = m->fogd; m->fogtab_sig[1] = m->cfade[0]; m->fogtab_sig[2] = m->cfade[1]; m->fogtab_sig[3] = m->cfade[2];
+    m->fogtab_ok = true;
+}
+
 static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, int cxz, int cxy, int czy,
                        bool noline, int n6)
 {
@@ -490,6 +518,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
             for (int j = 0; j < 3; j++) if (j != i)
                 pj *= sqrt100f((ax[i]-ax[j])*(ax[i]-ax[j]) + (az[i]-az[j])*(az[i]-az[j]));
         o->projf[pi] = pj / 3.0f;
+        o->n70ok[pi] = 0;
     }
     rot(m, ax, az, m->cx, m->cz, m->xz, N);
 
@@ -511,7 +540,12 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (paz[i] < 10) c54++;
     }
     PROF_ADD(PROF_PROJ, t_prj);
-    if (c52 == N || c50 == N || c51 == N || c53 == N) return;
+    if (c52 == N || c50 == N || c51 == N || c53 == N) {
+#ifdef NFM_STATS
+        g_st[c54 == N ? 0 : 1]++;
+#endif
+        return;
+    }
     bool vis = true;
 
     bool b2 = false;
@@ -526,6 +560,9 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
                 if (iabs(px[i] - px[j]) > d3) d3 = iabs(px[i] - px[j]);
                 if (iabs(py[i] - py[j]) > d4) d4 = iabs(py[i] - py[j]);
             }
+#ifdef NFM_STATS
+        g_st[7]++;
+#endif
         if (d3 == 0 || d4 == 0) vis = false;
         else if (d3 < 3 && d4 < 3 && ((n6 / d3 > 15 && n6 / d4 > 15) || b) && (!m->lightson || light == 0)) vis = false;
     }
@@ -567,6 +604,9 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (gr0 == -11 && av > 11000) vis = false;
         if (glass == 2 && (m->trk != 0 || av > 6700)) vis = false;
     }
+#ifdef NFM_STATS
+    g_st[vis ? 6 : 2]++;
+#endif
     if (!vis) return;
     NFM_TRACE("shade", (int)pi, 0);
     PROF_T(t_sh);
@@ -580,10 +620,15 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
      * so NaN is tracked in `nan70` and never touches a float compare. */
     float n70;
     bool nan70 = false;
-    if (o->deltaf[pi] == 0.0f) {
-        if (o->projf[pi] == 0.0f) { n70 = 0.0f; nan70 = true; }
-        else n70 = o->projf[pi] > 0.0f ? 1e30f : -1e30f;
-    } else n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
+    const bool rotated = cxy != 0 || czy != 0 || cxz != 0;
+    if (!rotated && o->n70ok[pi]) { n70 = o->n70c[pi]; nan70 = o->n70ok[pi] == 2; }
+    else {
+        if (o->deltaf[pi] == 0.0f) {
+            if (o->projf[pi] == 0.0f) { n70 = 0.0f; nan70 = true; }
+            else n70 = o->projf[pi] > 0.0f ? 1e30f : -1e30f;
+        } else n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
+        if (!rotated) { o->n70c[pi] = n70; o->n70ok[pi] = nan70 ? 2 : 1; }
+    }
 #define SET70(v) do { n70 = (v); nan70 = false; } while (0)
     if (b && !solo) {
         if (!nan70) {
@@ -606,14 +651,23 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
 #undef SET70
     int r, g, bl;
     if (nan70) r = g = bl = 0;
-    else hsb2rgb(o->hsb[pi*3], o->hsb[pi*3+1], o->hsb[pi*3+2] * n70, &r, &g, &bl);
-    if (m->trk == 0)
-        for (int i = 0; i < 16; i++)
-            if (av > m->fade[i]) {
-                r  = (r  * m->fogd + m->cfade[0]) / (m->fogd + 1);
-                g  = (g  * m->fogd + m->cfade[1]) / (m->fogd + 1);
-                bl = (bl * m->fogd + m->cfade[2]) / (m->fogd + 1);
+    else hsb2rgb_pre(o->hsb[pi*3+2] * n70, &o->hpqt[pi*3], o->hsec[pi], &r, &g, &bl);
+    if (m->trk == 0) {
+        int k = 0;
+        for (int i = 0; i < 16; i++) if (av > m->fade[i]) k++;
+        if (k) {
+            if (r >= 0 && r < 256 && g >= 0 && g < 256 && bl >= 0 && bl < 256) {
+                fog_table_sync(m);
+                r = m->fogtab[0][k][r]; g = m->fogtab[1][k][g]; bl = m->fogtab[2][k][bl];
+            } else {
+                for (int i = 0; i < k; i++) {
+                    r  = (r  * m->fogd + m->cfade[0]) / (m->fogd + 1);
+                    g  = (g  * m->fogd + m->cfade[1]) / (m->fogd + 1);
+                    bl = (bl * m->fogd + m->cfade[2]) / (m->fogd + 1);
+                }
             }
+        }
+    }
     NFM_TRACE("fog done", av, m->fogd);
     NFM_TRACE("fill", (int)pi, N);
     PROF_ADD(PROF_SHADE, t_sh);
