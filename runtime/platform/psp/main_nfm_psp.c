@@ -27,6 +27,9 @@ PSP_HEAP_SIZE_KB(-1024);
 #define W 480
 #define H 270
 #define STRIDE 512
+#ifndef NFM_LOWRES_DEFAULT
+#define NFM_LOWRES_DEFAULT 0   /* -DNFM_LOWRES_DEFAULT=1: start at 400x225 (emulator testing without a held button) */
+#endif
 #define FBSZ (STRIDE * 272 * 4)
 
 static volatile int g_running = 1;
@@ -75,6 +78,36 @@ static void blit_ge(uint32_t *vram_phys)
     sceGuStart(GU_DIRECT, g_gelist);
     sceGuCopyImage(GU_PSM_8888, 0, 0, W, H, W, g_px, 0, 0, STRIDE, vram_phys);
     sceGuTexSync();
+    sceGuFinish();
+    sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+}
+
+/* Low-res mode: g_px holds rw x rh pixels (stride rw); the GE draws it as a bilinear-filtered
+ * textured sprite stretched to the 480x270 picture (the game's 16:9). */
+typedef struct { float u, v; float x, y, z; } SpriteVtx;
+
+static void blit_ge_scaled(int rw, int rh, void *vram_off)
+{
+    sceKernelDcacheWritebackRange(g_px, (size_t)rw * rh * 4);
+    sceGuStart(GU_DIRECT, g_gelist);
+    sceGuDrawBufferList(GU_PSM_8888, vram_off, STRIDE);
+    sceGuOffset(2048 - 240, 2048 - 136);
+    sceGuViewport(2048, 2048, 480, 272);
+    sceGuScissor(0, 0, 480, 272);
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDisable(GU_BLEND);
+    sceGuEnable(GU_TEXTURE_2D);
+    sceGuTexMode(GU_PSM_8888, 0, 0, 0);
+    sceGuTexImage(0, 512, 256, rw, g_px);
+    sceGuTexFunc(GU_TFX_REPLACE, GU_TCC_RGBA);
+    sceGuTexFilter(GU_LINEAR, GU_LINEAR);
+    sceGuTexWrap(GU_CLAMP, GU_CLAMP);
+    sceGuTexFlush();
+    SpriteVtx *v = (SpriteVtx *)sceGuGetMemory(2 * sizeof(SpriteVtx));
+    v[0] = (SpriteVtx){ 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+    v[1] = (SpriteVtx){ (float)rw, (float)rh, 480.0f, 270.0f, 0.0f };
+    sceGuDrawArray(GU_SPRITES, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_TRANSFORM_2D, 2, NULL, v);
+    sceGuDisable(GU_TEXTURE_2D);
     sceGuFinish();
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
 }
@@ -135,14 +168,14 @@ int main(void)
 
     uint32_t *vram[2] = { (uint32_t *)(0x40000000 | (uintptr_t)sceGeEdramGetAddr()),
                           (uint32_t *)(0x40000000 | ((uintptr_t)sceGeEdramGetAddr() + FBSZ)) };
-    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100;
+    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100, lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
     unsigned prevb = 0;
     FILE *log = fopen("nfm_log.txt", "w");
 
     static Stage st; static Scene sc; static Medium med;
     bool loaded = false;
     int first = 1;
-    Frame f = { W, H, g_px };
+    Frame f = { lowres ? 400 : W, lowres ? 225 : H, g_px };
     unsigned long long tlast = sceKernelGetSystemTimeWide();
     int frames = 0; float fps = 0; unsigned long long acc_draw = 0, acc_blit = 0;
 
@@ -179,6 +212,11 @@ int main(void)
         if (edge & PSP_CTRL_LTRIGGER) want = -1;
         if (edge & PSP_CTRL_RTRIGGER) want = 1;
         if (edge & PSP_CTRL_START) overlay = !overlay;
+        if (edge & PSP_CTRL_TRIANGLE) {   /* 480x270 <-> 400x225 (0.5x the game's native 800x450) */
+            lowres = !lowres;
+            f.w = lowres ? 400 : W; f.h = lowres ? 225 : H;
+            med.scale = (float)f.w / 800.0f;
+        }
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = (b & PSP_CTRL_SQUARE) ? 120 : 40;
@@ -199,14 +237,15 @@ int main(void)
         if (first && trace_on) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         unsigned long long t_b = sceKernelGetSystemTimeWide();
 
-        if (cpu_blit) blit_cpu(vram[cur]);
+        if (lowres) blit_ge_scaled(f.w, f.h, (void *)(uintptr_t)(cur * FBSZ));
+        else if (cpu_blit) blit_cpu(vram[cur]);
         else blit_ge((uint32_t *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ));
         unsigned long long t_c = sceKernelGetSystemTimeWide();
         acc_draw += t_b - t_a; acc_blit += t_c - t_b;
         if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
-            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct);
+            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% %dx%d ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, f.w, f.h);
         }
         sceDisplayWaitVblankStart();
         if (first) { step("first blit, setting framebuf"); }
@@ -219,7 +258,7 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s far %d %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, cpu_blit ? "cpublit" : "geblit", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
+            if (log) { fprintf(log, "%s far %d %dx%d %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0; fflush(log); }
             frames = 0; tlast = now;
         }
     }
