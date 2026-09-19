@@ -204,25 +204,36 @@ static void fill_poly(Frame *f, const V2 *v, int n, uint32_t color)
     int y0 = (int)ceilf(ymin - 0.25f), y1 = (int)floorf(ymax - 0.25f);
     if (y0 < 0) y0 = 0;
     if (y1 >= f->h) y1 = f->h - 1;
+    /* edge table built once: a scanline sample sy crosses edge (a,b) iff min(ay,by) <= sy < max(ay,by)
+     * (same as the (a.y <= sy) != (b.y <= sy) test); slope = dx/dy replaces a division per row */
+    float ey0[MAXN], ey1[MAXN], ex[MAXN], eay[MAXN], esl[MAXN];
+    int ne = 0;
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+        const V2 *a = &v[j], *b = &v[i];
+        if (a->y == b->y) continue;
+        ey0[ne] = a->y < b->y ? a->y : b->y;
+        ey1[ne] = a->y < b->y ? b->y : a->y;
+        ex[ne] = a->x; eay[ne] = a->y; esl[ne] = (b->x - a->x) / (b->y - a->y);
+        ne++;
+    }
     for (int y = y0; y <= y1; y++) {
         float sy = y + 0.25f, xs[MAXN];
         int nx = 0;
-        for (int i = 0, j = n - 1; i < n; j = i++) {
-            const V2 *a = &v[j], *b = &v[i];
-            if ((a->y <= sy) == (b->y <= sy)) continue;
-            if (nx < MAXN) xs[nx++] = a->x + (sy - a->y) * (b->x - a->x) / (b->y - a->y);
-        }
+        for (int k = 0; k < ne; k++)
+            if (ey0[k] <= sy && sy < ey1[k] && nx < MAXN) xs[nx++] = ex[k] + (sy - eay[k]) * esl[k];
         for (int i = 1; i < nx; i++) {
             float t = xs[i]; int j = i - 1;
             while (j >= 0 && xs[j] > t) { xs[j + 1] = xs[j]; j--; }
             xs[j + 1] = t;
         }
+        uint32_t *row = f->px + (size_t)y * f->w;
         for (int i = 0; i + 1 < nx; i += 2) {
             int xa = (int)ceilf(xs[i] - 0.25f), xb = (int)ceilf(xs[i + 1] - 0.25f) - 1;
             if (xa < 0) xa = 0;
             if (xb >= f->w) xb = f->w - 1;
-            uint32_t *row = f->px + (size_t)y * f->w;
-            for (int x = xa; x <= xb; x++) row[x] = color;
+            uint32_t *p = row + xa, *end = row + xb + 1;
+            while (end - p >= 4) { p[0] = color; p[1] = color; p[2] = color; p[3] = color; p += 4; }
+            while (p < end) *p++ = color;
         }
     }
 }
@@ -634,7 +645,10 @@ void inst_draw(Medium *m, Inst *o)
         int n8 = m->cy + jint((o->y - m->y - m->cy) * czy_ - (n2 - m->cz) * szy);
         if (m_ys(m, n8 + maxR, n3) > m->ih && m_ys(m, n8 - maxR, n3) < m->h) {
             const uint32_t np = mesh->npolys;
-            int *rank = calloc(np, sizeof(int)), *order = calloc(np, sizeof(int));
+            static int *g_rank, *g_order_buf; static uint32_t g_rank_cap;
+            if (np > g_rank_cap) { g_rank_cap = np; g_rank = realloc(g_rank, np * sizeof(int)); g_order_buf = realloc(g_order_buf, np * sizeof(int)); }
+            int *rank = g_rank, *order = g_order_buf;
+            memset(rank, 0, np * sizeof(int));
             for (uint32_t i = 0; i < np; i++) {
                 for (uint32_t j = i + 1; j < np; j++) {
                     if (o->av[i] != o->av[j]) { if (o->av[i] < o->av[j]) rank[i]++; else rank[j]++; }
@@ -648,11 +662,10 @@ void inst_draw(Medium *m, Inst *o)
                 plane_draw(m, o, (uint32_t)order[i], o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy,
                            o->noline || (mesh->flags & (PMF_STONECOLD | PMF_NEWSTONE)) != 0, n4);
             }
-            free(rank); free(order);
             (void)shadow;
-            double d = sqrt((double)((m->x + m->cx - o->x) * (m->x + m->cx - o->x) + (m->z - o->z) * (m->z - o->z) +
-                                     (m->y + m->cy - o->y) * (m->y + m->cy - o->y)));
-            o->dist = jint(sqrt((double)jint(d)) * (mesh->grounded_pct / 100.0f));
+            int dsq = (m->x + m->cx - o->x) * (m->x + m->cx - o->x) + (m->z - o->z) * (m->z - o->z) +
+                      (m->y + m->cy - o->y) * (m->y + m->cy - o->y);
+            o->dist = jint(sqrtf((float)isqrt_n(dsq)) * (mesh->grounded_pct / 100.0f));
         }
     }
 }
