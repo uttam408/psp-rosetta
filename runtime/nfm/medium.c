@@ -695,16 +695,16 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (o->deltaf[pi] == 0.0f) {
             if (o->projf[pi] == 0.0f) { n70 = 0.0f; nan70 = true; }
             else n70 = o->projf[pi] > 0.0f ? 1e30f : -1e30f;
-        } else n70 = (float)(o->projf[pi] / o->deltaf[pi] + 0.3);
+        } else n70 = o->projf[pi] / o->deltaf[pi] + 0.3f;
         if (!rotated) { o->n70c[pi] = n70; o->n70ok[pi] = nan70 ? 2 : 1; }
     }
 #define SET70(v) do { n70 = (v); nan70 = false; } while (0)
     if (b && !solo) {
         if (!nan70) {
             bool b3 = false;
-            if (n70 > 1.0f) { if (n70 >= 1.27) b3 = true; n70 = 1.0f; }
-            if (b3) n70 *= 0.89; else n70 *= 0.86;
-            if (n70 < 0.37) n70 = 0.37f;
+            if (n70 > 1.0f) { if (n70 >= 1.27f) b3 = true; n70 = 1.0f; }
+            if (b3) n70 *= 0.89f; else n70 *= 0.86f;
+            if (n70 < 0.37f) n70 = 0.37f;
         }
         if (gr0 == -9) SET70(0.7f);
         if (gr0 == -4) SET70(0.74f);
@@ -715,7 +715,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         if (gr0 == -5) SET70(0.55f);
     } else {
         if (!nan70 && n70 > 1.0f) n70 = 1.0f;
-        if ((!nan70 && n70 < 0.6) || b2) SET70(0.6f);
+        if ((!nan70 && n70 < 0.6f) || b2) SET70(0.6f);
     }
 #undef SET70
     int r, g, bl;
