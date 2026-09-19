@@ -175,10 +175,10 @@ int main(void)
 
     uint32_t *vram[2] = { (uint32_t *)(0x40000000 | (uintptr_t)sceGeEdramGetAddr()),
                           (uint32_t *)(0x40000000 | ((uintptr_t)sceGeEdramGetAddr() + FBSZ)) };
-#ifdef NFM_FASTXF_DEFAULT
-    bool fastxf = true;
-#else
+#ifdef NFM_EXACT_DEFAULT
     bool fastxf = false;
+#else
+    bool fastxf = true;   /* ~10-15% cheaper per poly on hardware, 0.03% of pixels differ from the Java-exact path */
 #endif
     int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100, lowres = 0;
 #ifdef NFM_LOWRES
