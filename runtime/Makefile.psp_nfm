@@ -13,7 +13,12 @@ ASFLAGS  = $(CFLAGS)
 LIBS     = -lpspgum -lpspgu -lm -lpspctrl -lpspdisplay -lpspge -lpspdebug -lpsppower
 
 EXTRA_TARGETS   = EBOOT.PBP
-PSP_EBOOT_TITLE = NFM Viewer
+PSP_EBOOT_TITLE = Need for Madness
+# XMB art: python3 tools/nfm_art.py <need-for-madness-source> build/nfm/art (skipped when absent)
+ifneq ($(wildcard ../build/nfm/art/ICON0.PNG),)
+PSP_EBOOT_ICON = ../build/nfm/art/ICON0.PNG
+PSP_EBOOT_PIC1 = ../build/nfm/art/PIC1.PNG
+endif
 
 PSPSDK = $(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak
