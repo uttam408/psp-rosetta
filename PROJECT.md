@@ -132,8 +132,12 @@ CLI: `psp-rosetta <crawl|convert|pack|info> ...` (see `README.md`).
 - [ ] Jet / Boot / Bootje enemies, full FX, HUD text + game-over timeline, audio
 - [ ] Run the EBOOT (PPSSPP / hardware); tune GU perf, re-enable texture swizzle
 - [ ] Fidelity harness (replay diff vs original SWF)
-- [ ] Java/NFM adapter (walks source tree — stubbed)
-- [ ] Mesh converter
+- [x] Java/NFM adapter — unpacks `models/images/sounds/music` zips, stages
+      (374 assets from the decompiled tree -> ~10 MB pak)
+- [x] Mesh converter — NFM `.rad` -> `.pmesh` (all 84 models), stages -> JSON,
+      tracker music passthrough. See [docs/nfm-port-plan.md](docs/nfm-port-plan.md)
+      (source anatomy, formats, milestones M1-M8, open decisions)
+- [ ] NFM runtime (M1-M5 in the plan), NFM fidelity harness (M6)
 - [ ] `.vag` audio encoder
 - [ ] Runtime skeleton (pspdev CMake toolchain, EBOOT packaging)
 - [ ] Engine abstraction + 3 backends
