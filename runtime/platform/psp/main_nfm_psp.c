@@ -175,12 +175,18 @@ int main(void)
 
     uint32_t *vram[2] = { (uint32_t *)(0x40000000 | (uintptr_t)sceGeEdramGetAddr()),
                           (uint32_t *)(0x40000000 | ((uintptr_t)sceGeEdramGetAddr() + FBSZ)) };
+#ifndef NFM_TINY_FAR
+#define NFM_TINY_FAR 12   /* drop polys whose projected bbox is <= T native px in both axes; T ramps NFM_TINY_NEAR at the camera -> NFM_TINY_FAR at the draw-distance limit; 0 = off */
+#endif
+#ifndef NFM_TINY_NEAR
+#define NFM_TINY_NEAR 3
+#endif
 #ifdef NFM_EXACT_DEFAULT
     bool fastxf = false;
 #else
     bool fastxf = true;   /* ~10-15% cheaper per poly on hardware, 0.03% of pixels differ from the Java-exact path */
 #endif
-    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 100, lowres = 0;
+    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 60, lowres = 0;
 #ifdef NFM_LOWRES
     lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
 #endif
@@ -208,6 +214,7 @@ int main(void)
             if (!loaded) { want = 1; continue; }
             medium_init(&med, &f);
             med.fastxf = fastxf;
+            med.tiny = NFM_TINY_NEAR; med.tinyfar = NFM_TINY_FAR;
             stage_apply_env(&st, &med);
             med.far_pct = far_pct;
             step("medium ready, building scene");

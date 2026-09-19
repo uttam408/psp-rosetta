@@ -618,6 +618,14 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         g_st[7]++;
 #endif
         if (d3 == 0 || d4 == 0) vis = false;
+        else if (m->tinyfar > 0 && c54 == 0) {
+            int zmn2 = paz[0];
+            for (int i = 1; i < N; i++) if (paz[i] < zmn2) zmn2 = paz[i];
+            const int D = (int)((int64_t)m->fade[disline] * m->far_pct / 100);
+            if (zmn2 > D) zmn2 = D;
+            const int T = D > 0 ? m->tiny + (int)((int64_t)(m->tinyfar - m->tiny) * zmn2 / D) : m->tiny;
+            if (d3 <= T && d4 <= T) vis = false;
+        }
         else if (d3 < 3 && d4 < 3 && ((n6 / d3 > 15 && n6 / d4 > 15) || b) && (!m->lightson || light == 0)) vis = false;
     }
     if (vis) {

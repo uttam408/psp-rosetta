@@ -78,7 +78,10 @@ static int stage_main(int argc, char **argv)
                 *v[k] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--bench") == 0) bench = true;
     }
-    for (int i = 3; i < argc; i++) if (strcmp(argv[i], "--fast") == 0) med.fastxf = true;   /* float-composed transform */
+    for (int i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "--fast") == 0) med.fastxf = true;   /* float-composed transform */
+        if (strcmp(argv[i], "--tiny") == 0 && i + 2 < argc) { med.tiny = atoi(argv[i + 1]); med.tinyfar = atoi(argv[i + 2]); }
+    }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
 
     if (shot || bench) {

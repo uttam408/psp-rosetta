@@ -24,6 +24,7 @@ typedef struct {
     int fade[16], fogd;
     uint8_t fogtab[3][17][256];   /* fogtab[ch][k][v]: v after k fog steps (exact integer recurrence) */
     int fogtab_sig[4]; bool fogtab_ok;
+    int tiny, tinyfar;   /* drop polys whose projected bbox is <= T native px in both axes; T ramps tiny (at the camera) -> tinyfar (at the draw-distance limit); tinyfar 0 = off */
     bool fastxf;   /* float-composed transform (approximate, faster); off = Java-exact integer rot() chain */
     struct { float X[4], Y1[4], Z1[4], Y2[4], Z2[4], Xo[4], Zo[4]; } xf;   /* per-object rows: world-rel yaw'd (X,Y1,Z1), pitched (Y2,Z2), obj-rotated (Xo,Zo) */
     int far_pct;   /* draw-distance cull scale in percent (100 = original Java behaviour) */
