@@ -36,12 +36,17 @@ typedef struct {
     PMesh *piles;                /* one procedural mesh per `pile` directive */
     uint32_t npiles;
     int nmesh_slots;
+    PMesh car_src, car;          /* optional test car (scene_add_car) */
+    Inst *car_inst;
     uint32_t skipped;            /* directives not yet instantiated (unknown ids, missing meshes) */
 } Scene;
 
 /* looks pieces up in the pak as mesh/piece/<name>; needs env applied first (snap colours) */
 bool scene_build(Scene *sc, const Stage *s, Medium *m);
 void scene_free(Scene *sc);
+/* places a car (pak id e.g. "mesh/car/audir8", wheels built in) standing on the ground at (x,z); the spare Inst slot of
+ * scene_build holds it.  p1/p2 = first/second paint 0xRRGGBB or -1.  Returns the instance or NULL. */
+Inst *scene_add_car(Scene *sc, Medium *m, const char *id, int x, int z, int xz, int32_t p1, int32_t p2);
 void scene_draw(Medium *m, Scene *sc);   /* backdrop, then objects far-to-near by ContO.dist */
 
 #endif

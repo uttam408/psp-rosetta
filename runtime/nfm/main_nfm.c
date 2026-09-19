@@ -84,6 +84,20 @@ static int stage_main(int argc, char **argv)
         if (strcmp(argv[i], "--nochkalways") == 0) for (uint32_t k = 0; k < sc.n; k++) sc.inst[k].always = false;
         if (strcmp(argv[i], "--tiny") == 0 && i + 2 < argc) { med.tiny = atoi(argv[i + 1]); med.tinyfar = atoi(argv[i + 2]); }
     }
+    for (int i = 3; i < argc; i++)
+        if (strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
+            char id[96]; snprintf(id, sizeof id, "mesh/car/%s", argv[i + 1]);
+            int cxp = 0, czp = 0;
+            if (sc.n) { cxp = sc.inst[0].x; czp = sc.inst[0].z; }
+            int spin = 0, steer = 0;
+            for (int j = 3; j + 1 < argc; j++) {
+                if (strcmp(argv[j], "--spin") == 0) spin = atoi(argv[j + 1]);
+                if (strcmp(argv[j], "--steer") == 0) steer = atoi(argv[j + 1]);
+                if (strcmp(argv[j], "--carpos") == 0 && j + 2 < argc) { cxp = atoi(argv[j + 1]); czp = atoi(argv[j + 2]); }
+            }
+            Inst *c = scene_add_car(&sc, &med, id, cxp, czp, 0, 0xc83232, 0x282828);
+            if (c) { c->wzy = spin; c->wxz = steer; }
+        }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
 
     if (shot || bench) {

@@ -5,7 +5,7 @@
 # switching between this and Makefile.psp.
 
 TARGET = nfm_view_psp
-OBJS = nfm/pmesh.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/main_nfm_psp.o
+OBJS = nfm/pmesh.o nfm/wheels.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/main_nfm_psp.o
 
 INCDIR   = src .
 CFLAGS   = $(XCFLAGS) -DNFM_ABGR -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -ffp-contract=off -fwrapv -MMD -MP

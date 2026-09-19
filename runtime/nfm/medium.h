@@ -35,6 +35,7 @@ typedef struct {
     float scale;           /* 800x450 -> frame, 0.6 for 480x270 */
     int trk;               /* 0 = normal render */
     bool lightson;
+    bool crs;              /* Medium.crs: crash state (wheels draw full 20-gon / rims regardless of distance) */
     Frame *frame;
 } Medium;
 
@@ -59,6 +60,7 @@ typedef struct {
     const PMesh *mesh;
     int x, y, z, xz, xy, zy;
     int dist;                    /* ContO.dist — painter key between objects */
+    int wxz, wzy;                /* ContO.wxz / wzy: wheel steer / spin angle (degrees) */
     bool noline;
     bool always;                 /* checkpoint: never culled by view distance (or the tiny-poly rule); still culled behind/off-screen */
     int  *av;                    /* Plane.av persists between frames and feeds the sort */

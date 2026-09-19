@@ -519,7 +519,10 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
 {
     const PMesh *mesh = o->mesh;
     const PmPoly *P = &mesh->polys[pi];
-    const int N = P->nverts;
+    const PmPolyX *X = mesh->px ? &mesh->px[pi] : NULL;
+    const bool wheel = X && X->wheel;
+    int N = P->nverts;
+    if (wheel && X->master == 1 && !m->crs && o->av[pi] > 1500) N = 12;   /* distant wheel: 12-gon */
     if (N > MAXN) { fprintf(stderr, "plane: %d-vertex polygon exceeds MAXN\n", N); return; }
     if (N < 3) return;
     PROF_T(t_rot);
@@ -532,12 +535,12 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     const int gr0 = P->gr, fs = P->fs, light = P->light;
     const bool solo = P->no_outline != 0;
     const bool road = (mesh->flags & PMF_ROAD) != 0;
-    const int disline = mesh->disline ? mesh->disline : 14;
+    const int disline = wheel ? X->disline : mesh->disline ? mesh->disline : 14;
     const int glass = P->material == PM_MAT_GLASS ? 1 : P->material == PM_MAT_GSHADOW ? 2 : 0;
     const bool nocol = o->col[pi*3] == o->col[pi*3+1] && o->col[pi*3+1] == o->col[pi*3+2];
     (void)nocol; (void)light;
 
-    if (m->fastxf) {
+    if (m->fastxf && !wheel) {
         for (int i = 0; i < N; i++) {
             float x = pv[i]->x, y = pv[i]->y, z = pv[i]->z;
             ax[i] = (int)dot4(m->xf.X, x, y, z);
@@ -559,6 +562,10 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         }
     } else {
         for (int i = 0; i < N; i++) { ax[i] = (int)pv[i]->x + n; ay[i] = (int)pv[i]->y + n2; az[i] = (int)pv[i]->z + n3; }
+        if (wheel) {
+            if (X->wz != 0) rot(m, ay, az, X->wy + n2, X->wz + n3, o->wzy, N);
+            if (X->wx != 0) rot(m, ax, az, X->wx + n, X->wz + n3, o->wxz, N);
+        }
         rot(m, ax, ay, n, n2, cxy, N);
         rot(m, ay, az, n2, n3, czy, N);
         rot(m, ax, az, n, n3, cxz, N);
@@ -599,7 +606,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
 
     bool b2 = false;
     int bay[MAXN], baz[MAXN];
-    if (m->fastxf) {
+    if (m->fastxf && !wheel) {
         for (int i = 0; i < N; i++) {
             float x = pv[i]->x, y = pv[i]->y, z = pv[i]->z;
             bay[i] = (int)dot4(m->xf.Y1, x, y, z); baz[i] = (int)dot4(m->xf.Z1, x, y, z);
@@ -656,6 +663,7 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
         o->av[pi] = isqrt_n((m->cy - cy) * (m->cy - cy) + (m->cx - cx) * (m->cx - cx) + czz * czz + gr * gr * gr);
         int av = o->av[pi];
         if (m->trk == 0 && ((av > (int)((int64_t)m->fade[disline] * m->far_pct / 100) && !o->always) || av == 0)) vis = false;
+        if (wheel && X->master == 2 && av > 1500 && !m->crs) vis = false;
         if (lastmaf == -111 && av > 4500 && !road) vis = false;
         if (lastmaf == -111 && av > 1500) b = true;
         if (av > 3000 && m->adv <= 900) b = true;

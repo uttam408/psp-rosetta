@@ -17,6 +17,8 @@ typedef struct {
     uint8_t  no_outline, pad;
 } PmPoly;
 typedef struct { int32_t x, y, z, steer, width, height, gwgr; } PmWheel;
+/* runtime-only per-poly extras, present (px != NULL) only on car meshes that carry procedural wheels */
+typedef struct { int32_t wx, wy, wz; uint8_t wheel, master, disline, pad; } PmPolyX;
 typedef struct {
     uint8_t  r, g, b, pad;
     int32_t  xy, zy, radx, rady, radz, x, y, z, skid;
@@ -36,12 +38,17 @@ typedef struct {
     uint32_t nverts, npolys, nindices, max_r;
     uint8_t  nwheels, ntracks;
     uint8_t  first_color[3], second_color[3];
+    int16_t  rims[5];            /* r,g,b,size*10,depth*10; valid when has_rims */
+    bool     has_rims;
+    int      grat, sparkat;      /* car ground offset / spark height from the last wheel (Wheels.ground / .sparkat) */
     uint16_t disline, disp, grounded_pct;
     const PmVert  *verts;
     const PmPoly  *polys;
     const uint16_t *indices;
     const PmWheel *wheels;
     const PmTrack *tracks;
+    const PmPolyX *px;           /* nverts-independent, one per poly, or NULL */
+    void *xown;                  /* buffer built by car_mesh_build (free with pmesh_free) */
     void *owned;   /* aligned copy of the blob when the source was misaligned (free with pmesh_free) */
 } PMesh;
 

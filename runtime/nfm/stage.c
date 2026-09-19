@@ -5,6 +5,7 @@
 #include "../src/pak.h"
 #include "gen/npieces.h"
 #include "pile.h"
+#include "wheels.h"
 
 #define WALL_PIECE 29          /* PIECES["thewall"]; GameSparker uses models[85] = 56 + 29 */
 #define WALL_STEP  4800
@@ -130,8 +131,20 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
     return true;
 }
 
+Inst *scene_add_car(Scene *sc, Medium *m, const char *id, int x, int z, int xz, int32_t p1, int32_t p2)
+{
+    const PakAsset *a = pak_find(id);
+    if (!a || !pmesh_load(&sc->car_src, a->data, a->size)) { fprintf(stderr, "no car mesh %s\n", id); return NULL; }
+    if (!car_mesh_build(&sc->car, &sc->car_src)) return NULL;
+    Inst *o = &sc->inst[sc->n++];
+    inst_init(o, m, &sc->car, x, 250 - sc->car.grat, z, xz, p1, p2);
+    sc->car_inst = o;
+    return o;
+}
+
 void scene_free(Scene *sc)
 {
+    if (sc->car_inst) { pmesh_free(&sc->car); pmesh_free(&sc->car_src); }
     for (uint32_t i = 0; i < sc->n; i++) inst_free(&sc->inst[i]);
     for (uint32_t i = 0; i < sc->npiles; i++) pile_free(&sc->piles[i]);
     if (sc->meshes) for (int i = 0; i < NPIECE_COUNT; i++) pmesh_free(&sc->meshes[i]);

@@ -28,6 +28,8 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
     m->ntracks  = d[25];
     memcpy(m->first_color,  d + 28, 3);
     memcpy(m->second_color, d + 32, 3);
+    memcpy(m->rims, d + 36, sizeof m->rims);
+    m->has_rims = (m->flags & 0x20) != 0;
     m->disline = rd16(d + 48);
     m->disp    = rd16(d + 50);
     m->grounded_pct = rd16(d + 52);
@@ -53,4 +55,4 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
     return true;
 }
 
-void pmesh_free(PMesh *m) { free(m->owned); m->owned = NULL; }
+void pmesh_free(PMesh *m) { free(m->owned); free(m->xown); m->owned = m->xown = NULL; }
