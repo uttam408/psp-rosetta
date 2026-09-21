@@ -17,6 +17,10 @@ typedef struct { uint32_t c; int16_t x, y, z, pad; } GV;   /* GU_COLOR_8888 | GU
 #define LIST_WORDS 32768   /* must match the display list array in main_nfm_psp.c */
 #define CMD_WORDS 6         /* worst case per DrawArray: vtype + base + vaddr + prim (+ slack) */
 #define LIST_CAP (LIST_WORDS - 256)
+/* The GE's 2D path only has 12-bit screen coordinates after the offset: with sceGuOffset(2048-240, 2048-136) a
+ * pixel x is valid in -1808..2287 and y in -1912..2183.  Anything beyond wraps and smears horizontal streaks
+ * across the frame, so polygons reaching past +-GE_LIM are clipped to the frame first. */
+#define GE_LIM 1500.f
 
 #ifdef NFM_GESKIP2   /* profiling: do all the prep, skip the actual GE draw calls */
 #define DRAW(prim, n, base) ((void)0)
@@ -88,7 +92,7 @@ static int prep(const float *xy, int n, int *x, int *y)
     for (int i = 0; i < n; i++) {
         float px = xy[2 * i], py = xy[2 * i + 1];
         if (!(fabsf(px) < 1e7f) || !(fabsf(py) < 1e7f)) return 0;   /* NaN / inf */
-        if (px < -4000.f || px > 4000.f || py < -4000.f || py > 4000.f) need = 1;
+        if (px < -GE_LIM || px > GE_LIM || py < -GE_LIM || py > GE_LIM) need = 1;
     }
     const float *p = xy;
     if (need) {
@@ -204,7 +208,7 @@ void nfm_ge_outline(const float *xy, int n, uint32_t color)
     int x[MAXV], y[MAXV];
     if (n < 2 || n > MAXV - 8) return;
     for (int i = 0; i < n; i++) {
-        if (!(fabsf(xy[2 * i]) < 3000.f) || !(fabsf(xy[2 * i + 1]) < 3000.f)) return;   /* far off-screen outline: skip (int16 safety) */
+        if (!(fabsf(xy[2 * i]) < GE_LIM) || !(fabsf(xy[2 * i + 1]) < GE_LIM)) return;   /* far off-screen outline: skip (int16 safety) */
         x[i] = (int)floorf(xy[2 * i] + 0.5f); y[i] = (int)floorf(xy[2 * i + 1] + 0.5f);
     }
     emit_outline(x, y, n, color);
@@ -222,7 +226,7 @@ void nfm_ge_poly_i(const int *xs, const int *ys, int n, float scale, uint32_t co
     if (n < 3 || n > MAXV - 8) return;
     for (int i = 0; i < n; i++) {
         float fx = xs[i] * scale, fy = ys[i] * scale;
-        far |= (fx > 3000.f) | (fx < -3000.f) | (fy > 3000.f) | (fy < -3000.f);
+        far |= (fx > GE_LIM) | (fx < -GE_LIM) | (fy > GE_LIM) | (fy < -GE_LIM);
         x[i] = RND(fx); y[i] = RND(fy);
     }
     if (far) {
@@ -243,7 +247,7 @@ void nfm_ge_outline_i(const int *xs, const int *ys, int n, float scale, uint32_t
     if (n < 2 || n > MAXV - 8) return;
     for (int i = 0; i < n; i++) {
         float fx = xs[i] * scale, fy = ys[i] * scale;
-        if (fx > 3000.f || fx < -3000.f || fy > 3000.f || fy < -3000.f) return;   /* far off-screen outline: skip (int16 safety) */
+        if (fx > GE_LIM || fx < -GE_LIM || fy > GE_LIM || fy < -GE_LIM) return;   /* far off-screen outline: skip (GE range) */
         x[i] = RND(fx); y[i] = RND(fy);
     }
     emit_outline(x, y, n, color);
