@@ -116,7 +116,7 @@ static void blit_ge_scaled(int rw, int rh, void *vram_off)
 void nfm_ge_begin(unsigned int *list, void *vram_off, int w, int h);
 void nfm_ge_finish(void);
 void nfm_ge_sync(void);
-extern unsigned g_ge_dropped, g_ge_nv;
+extern unsigned g_ge_dropped, g_ge_nv, g_ge_cmd;
 static unsigned int __attribute__((aligned(16))) g_gelist_fill[32768];
 #endif
 
@@ -147,10 +147,26 @@ int main(void)
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     SceCtrlData p0; sceCtrlReadBufferPositive(&p0, 1);
     int fast = (p0.Buttons & PSP_CTRL_RTRIGGER) != 0;
-    int cpu_blit = (p0.Buttons & PSP_CTRL_SQUARE) != 0;   /* hold Square at launch: old CPU memcpy blit, for A/B timing */
+    int cpu_blit = (p0.Buttons & PSP_CTRL_SQUARE) != 0;   /* hold Square at launch: GE builds fall back to the CPU rasteriser + GE blit; GEFILL=0 builds use the CPU memcpy blit */
+#ifdef NFM_FORCECPU   /* PPSSPP test of the Square-at-launch fallback */
+    cpu_blit = 1;
+#endif
+#ifdef NFM_GEFILL
+    g_nfm_gefill = !cpu_blit;
+#define MEMCPY_BLIT 0
+#define GEFILL_ON g_nfm_gefill
+#else
+#define MEMCPY_BLIT cpu_blit
+#define GEFILL_ON 0
+#endif
     int trace_on = (p0.Buttons & PSP_CTRL_LTRIGGER) != 0;   /* hold L at launch: crash-bisect trace of frame 1 (slow) */
     if (fast) scePowerSetClockFrequency(333, 333, 166);   /* default stays at the system's 222 */
-    step("clock (R held at launch = 333): cpu %d bus %d; blit=%s", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency(), cpu_blit ? "cpu" : "ge");
+    step("clock (R held at launch = 333): cpu %d bus %d; fill=%s", scePowerGetCpuClockFrequency(), scePowerGetBusClockFrequency(),
+#ifdef NFM_GEFILL
+         cpu_blit ? "cpu" : "ge");
+#else
+         cpu_blit ? "cpu-memcpy" : "cpu+geblit");
+#endif
     pspDebugScreenInit();
     pspDebugScreenPrintf("NFM viewer starting...\n");
     sceGuInit();
@@ -198,7 +214,7 @@ int main(void)
 #ifdef NFM_LOWRES
     lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
 #endif
-    unsigned prevb = 0;
+    unsigned prevb = p0.Buttons;   /* buttons held at launch must not count as presses */
     FILE *log = fopen("nfm_log.txt", "w");
 
     static Stage st; static Scene sc; static Medium med;
@@ -210,7 +226,7 @@ int main(void)
     int first = 1;
     Frame f = { lowres ? 400 : W, lowres ? 225 : H, g_px };
     unsigned long long tlast = sceKernelGetSystemTimeWide();
-    int frames = 0; float fps = 0; unsigned long long acc_draw = 0, acc_blit = 0;
+    int frames = 0; float fps = 0; unsigned long long acc_draw = 0, acc_blit = 0, acc_phys = 0, max_phys = 0, max_frame = 0, tprev = 0; unsigned nphys = 0;
 
     while (g_running) {
         if (!loaded || want || reload) {
@@ -258,6 +274,9 @@ int main(void)
         if (ay > -30 && ay < 30) ay = 0;
         if (edge & PSP_CTRL_LTRIGGER) want = -1;
         if (edge & PSP_CTRL_RTRIGGER) want = 1;
+#ifdef NFM_STAGECYCLE   /* -DNFM_STAGECYCLE: PPSSPP sweep, hold gas and step to the next stage every 120 frames */
+        { static int nf; if (++nf % 120 == 0) want = 1; b |= PSP_CTRL_UP; }
+#endif
 #ifdef NFM_CARCYCLE   /* -DNFM_CARCYCLE: PPSSPP test, hold gas and step to the next car every 150 frames */
         { static int nf; if (++nf % 150 == 0) edge |= PSP_CTRL_SQUARE; b |= PSP_CTRL_UP; }
 #endif
@@ -279,7 +298,12 @@ int main(void)
                             .up = (b & PSP_CTRL_UP) || ay < -40, .down = (b & PSP_CTRL_DOWN) || ay > 40,
                             .handb = (b & PSP_CTRL_CROSS) != 0, .zyinv = false, .wall = -1 };
             unsigned long long tn = sceKernelGetSystemTimeWide();
-            for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
+            for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) {
+                unsigned long long tp = sceKernelGetSystemTimeWide();
+                mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
+                unsigned long long dp = sceKernelGetSystemTimeWide() - tp;
+                acc_phys += dp; nphys++; if (dp > max_phys) max_phys = dp;
+            }
             if (tn - tphys >= 33333) tphys = tn;
             med.x = dci->x - (int)(m_sin(dci->xz) * 900) - med.cx; med.z = dci->z - (int)(m_cos(dci->xz) * 900);
             med.y = dci->y - 490; med.xz = dci->xz; med.zy = 10;
@@ -301,22 +325,25 @@ int main(void)
         unsigned long long t_a = sceKernelGetSystemTimeWide();
         if (first && trace_on) { { FILE *z = fopen("nfm_trace.txt", "w"); if (z) { for (int k = 0; k < 64; k++) fputc(' ', z); fclose(z); } } g_trace_f = fopen("nfm_trace.txt", "r+"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
 #ifdef NFM_GEFILL
-        nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
+        if (g_nfm_gefill) nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
 #endif
         scene_draw(&med, &sc);
         if (first && trace_on) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
+        unsigned long long t_b;
 #ifdef NFM_GEFILL
-        nfm_ge_finish();
-        unsigned long long t_b = sceKernelGetSystemTimeWide();   /* CPU list building ends here; blit column = waiting for the GE */
-        nfm_ge_sync();
-        (void)cpu_blit; (void)vram;
-#else
-        unsigned long long t_b = sceKernelGetSystemTimeWide();
+        if (g_nfm_gefill) {
+            nfm_ge_finish();
+            t_b = sceKernelGetSystemTimeWide();   /* CPU list building ends here; blit column = waiting for the GE */
+            nfm_ge_sync();
+        } else
+#endif
+        {
+            t_b = sceKernelGetSystemTimeWide();
 
         if (lowres) blit_ge_scaled(f.w, f.h, (void *)(uintptr_t)(cur * FBSZ));
-        else if (cpu_blit) blit_cpu(vram[cur]);
+        else if (MEMCPY_BLIT) blit_cpu(vram[cur]);
         else blit_ge((uint32_t *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ));
-#endif
+        }
         unsigned long long t_c = sceKernelGetSystemTimeWide();
 #ifdef NFM_SHOT   /* -DNFM_SHOT: dump frame 60 (480x270 ABGR) to nfm_shot.raw for emulator checks */
         { static int nf; if (++nf == 60) {   /* GE copy VRAM -> RAM: PPSSPP keeps GPU-rendered frames out of guest VRAM until a transfer asks */
@@ -344,12 +371,17 @@ int main(void)
         if (first) { step("first frame shown"); first = 0; }
 
         frames++;
+        { unsigned long long tf = sceKernelGetSystemTimeWide(); if (tprev && tf - tprev > max_frame) max_frame = tf - tprev; tprev = tf; }
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s far %d %dx%d %s %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0;
+            if (log) { fprintf(log, "%s far %d %dx%d %s %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : MEMCPY_BLIT ? "cpublit" : GEFILL_ON ? "gefill" : "cpufill+geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames);
+            if (log) fprintf(log, "  worst frame %.1f ms", max_frame / 1000.0);
+            if (log && driving && nphys) fprintf(log, "  phys %.2f ms/tick (max %.2f, %u ticks)", acc_phys / 1000.0 / nphys, max_phys / 1000.0, nphys);
+            if (log) fputc('\n', log);
+            acc_draw = acc_blit = acc_phys = max_phys = max_frame = 0; nphys = 0;
 #ifdef NFM_GEFILL
-            if (log) fprintf(log, "  ge: %u verts, %u dropped\n", g_ge_nv, g_ge_dropped);
+            if (log && g_nfm_gefill) fprintf(log, "  ge: %u verts, ~%u list words, %u dropped\n", g_ge_nv, g_ge_cmd, g_ge_dropped);
 #endif
             if (log && driving) fprintf(log, "  drive: %s pos %d,%d,%d speed %.1f cp %d hit %d\n", NFM_CARS[car_i].mesh, dci->x, dci->y, dci->z, mad.speed, mad.env->checkpoint, mad.hitmag);
 #ifdef NFM_PROF

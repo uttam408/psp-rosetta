@@ -83,6 +83,7 @@ void inst_draw(Medium *m, Inst *o);          /* ContO.d */
 #ifdef NFM_GEFILL   /* pixel fill done by the PSP GE (platform/psp/ge_fill.c); xy = interleaved frame-pixel floats */
 void nfm_ge_poly(const float *xy, int n, uint32_t color);
 void nfm_ge_outline(const float *xy, int n, uint32_t color);
+extern int g_nfm_gefill;   /* 1 = GE fill (default), 0 = CPU rasteriser into Frame.px */
 #endif
 
 extern int g_polys_in, g_polys_drawn;

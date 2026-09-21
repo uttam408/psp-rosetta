@@ -14,15 +14,19 @@ typedef struct { uint32_t c; int16_t x, y, z, pad; } GV;   /* GU_COLOR_8888 | GU
 #define VFMT (GU_COLOR_8888 | GU_VERTEX_16BIT | GU_TRANSFORM_2D)
 #define NV 24000
 #define MAXV 96
+#define LIST_WORDS 32768   /* must match the display list array in main_nfm_psp.c */
+#define CMD_WORDS 6         /* worst case per DrawArray: vtype + base + vaddr + prim (+ slack) */
+#define LIST_CAP (LIST_WORDS - 256)
 
 static GV __attribute__((aligned(16))) g_v[NV];
 static inline void put(int *k, uint32_t c, int x, int y);
 static int g_nv, g_w = 480, g_h = 270;
-unsigned g_ge_dropped, g_ge_nv;   /* polys/outlines skipped because the vertex buffer was full */
+static unsigned g_cmd;   /* estimated display-list words used this frame; the GE hangs if the list overruns */
+unsigned g_ge_dropped, g_ge_nv, g_ge_cmd;   /* polys/outlines skipped because the vertex buffer was full */
 
 void nfm_ge_begin(unsigned int *list, void *vram_off, int w, int h)
 {
-    g_w = w; g_h = h; g_nv = 0; g_ge_dropped = 0;
+    g_w = w; g_h = h; g_nv = 0; g_cmd = 0; g_ge_dropped = 0;
     sceGuStart(GU_DIRECT, list);
     sceGuDrawBufferList(GU_PSM_8888, vram_off, 512);
     sceGuOffset(2048 - 240, 2048 - 136);
@@ -40,7 +44,7 @@ void nfm_ge_begin(unsigned int *list, void *vram_off, int w, int h)
 
 void nfm_ge_finish(void)
 {
-    g_ge_nv = (unsigned)g_nv;
+    g_ge_nv = (unsigned)g_nv; g_ge_cmd = g_cmd;
 #ifdef NFM_GETEST
     { GV *t = (GV *)sceGuGetMemory(2 * sizeof(GV));   /* -DNFM_GETEST: red square, proves the GE state is live */
       t[0] = (GV){ 0xFF0000FFu, 10, 10, 0, 0 }; t[1] = (GV){ 0xFF0000FFu, 110, 110, 0, 0 };
@@ -123,7 +127,8 @@ void nfm_ge_poly(const float *xy, int n, uint32_t color)
     n = prep(xy, n, x, y);
     if (!n) return;
     uint32_t c = color | 0xFF000000u;
-    if (g_nv + 3 * n > NV) { g_ge_dropped++; return; }
+    if (g_nv + 3 * n > NV || g_cmd + CMD_WORDS > LIST_CAP) { g_ge_dropped++; return; }
+    g_cmd += CMD_WORDS;
     GV *base = &g_v[g_nv];
     if (is_convex(x, y, n)) {
         int k = g_nv;
@@ -172,7 +177,8 @@ void nfm_ge_outline(const float *xy, int n, uint32_t color)
         if (!(fabsf(xy[2 * i]) < 3000.f) || !(fabsf(xy[2 * i + 1]) < 3000.f)) return;   /* far off-screen outline: skip (int16 safety) */
         x[i] = (int)floorf(xy[2 * i] + 0.5f); y[i] = (int)floorf(xy[2 * i + 1] + 0.5f);
     }
-    if (g_nv + n + 1 > NV) { g_ge_dropped++; return; }
+    if (g_nv + n + 1 > NV || g_cmd + CMD_WORDS > LIST_CAP) { g_ge_dropped++; return; }
+    g_cmd += CMD_WORDS;
     uint32_t c = color | 0xFF000000u;
     GV *base = &g_v[g_nv];
     int k = g_nv;

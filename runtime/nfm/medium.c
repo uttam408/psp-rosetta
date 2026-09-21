@@ -208,7 +208,6 @@ static void rot(const Medium *m, int *a, int *b, int n, int n2, int ang, int cnt
 
 typedef struct { float x, y; } V2;
 
-#ifndef NFM_GEFILL
 static void fill_poly(Frame *f, const V2 *v, int n, uint32_t color)
 {
 #ifdef NFM_NOFILL
@@ -268,33 +267,37 @@ static void line(Frame *f, int x0, int y0, int x1, int y1, uint32_t c)
     }
 }
 
+#ifdef NFM_GEFILL
+int g_nfm_gefill = 1;   /* 0 = CPU rasteriser into Frame.px (launch-time fallback) */
 #endif
 
 static void fill_ipoly(const Medium *m, const int *xs, const int *ys, int n, int r, int g, int b)
 {
 #ifdef NFM_GEFILL
-    float xy[MAXN * 2];
-    for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * m->scale; xy[2 * i + 1] = ys[i] * m->scale; }
-    nfm_ge_poly(xy, n, PACK(clamp255(r), clamp255(g), clamp255(b)));
-    return;
-#else
+    if (g_nfm_gefill) {
+        float xy[MAXN * 2];
+        for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * m->scale; xy[2 * i + 1] = ys[i] * m->scale; }
+        nfm_ge_poly(xy, n, PACK(clamp255(r), clamp255(g), clamp255(b)));
+        return;
+    }
+#endif
     V2 v[MAXN];
     for (int i = 0; i < n; i++) { v[i].x = xs[i] * m->scale; v[i].y = ys[i] * m->scale; }
     fill_poly(m->frame, v, n, PACK(clamp255(r), clamp255(g), clamp255(b)));
-#endif
 }
 
 static void outline_ipoly(const Medium *m, const int *xs, const int *ys, int n, uint32_t c)
 {
 #ifdef NFM_GEFILL
-    float xy[MAXN * 2];
-    for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * m->scale; xy[2 * i + 1] = ys[i] * m->scale; }
-    nfm_ge_outline(xy, n, c);
-    return;
-#else
+    if (g_nfm_gefill) {
+        float xy[MAXN * 2];
+        for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * m->scale; xy[2 * i + 1] = ys[i] * m->scale; }
+        nfm_ge_outline(xy, n, c);
+        return;
+    }
+#endif
     for (int i = 0, j = n - 1; i < n; j = i++)
         line(m->frame, (int)(xs[j] * m->scale), (int)(ys[j] * m->scale), (int)(xs[i] * m->scale), (int)(ys[i] * m->scale), c);
-#endif
 }
 
 /* ---- backdrop: Medium.d sky + ground fog bands ---------------------------- */
