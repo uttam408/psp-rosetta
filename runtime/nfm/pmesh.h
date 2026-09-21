@@ -49,11 +49,19 @@ typedef struct {
     const PmTrack *tracks;
     const PmPolyX *px;           /* nverts-independent, one per poly, or NULL */
     void *xown;                  /* buffer built by car_mesh_build (free with pmesh_free) */
+    uint16_t *uidx;              /* per index: id of its unique (x,y,z) vertex; 0xFFFF for wheel polys (built lazily by pmesh_uniq) */
+    uint16_t *usrc;              /* per unique vertex: index into verts[] */
+    uint32_t nuniq;
+    void *uown;
+    float *psz;                  /* per poly: max pairwise vertex distance in model units (1e9 for wheel polys); from pmesh_uniq */
+    float maxpsz;                /* max of psz over non-wheel polys */
     void *owned;   /* aligned copy of the blob when the source was misaligned (free with pmesh_free) */
 } PMesh;
 
 /* returns false on bad magic/version/truncation */
 bool pmesh_load(PMesh *m, const uint8_t *data, size_t size);
 void pmesh_free(PMesh *m);
+/* builds the unique-vertex tables (uidx/usrc/nuniq) once; lets the renderer transform each shared vertex once per object */
+void pmesh_uniq(PMesh *m);
 
 #endif

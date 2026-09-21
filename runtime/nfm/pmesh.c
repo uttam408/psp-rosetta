@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #define HDR_SIZE 56
 
@@ -55,4 +56,51 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
     return true;
 }
 
-void pmesh_free(PMesh *m) { free(m->owned); free(m->xown); m->owned = m->xown = NULL; }
+void pmesh_free(PMesh *m) { free(m->owned); free(m->xown); free(m->uown); free(m->psz); m->owned = m->xown = m->uown = NULL; m->psz = NULL; m->maxpsz = 0; m->uidx = m->usrc = NULL; m->nuniq = 0; }
+
+void pmesh_uniq(PMesh *m)
+{
+    if (m->uown || !m->nindices) return;
+    uint32_t ni = m->nindices, cap = 1;
+    while (cap < ni * 2) cap <<= 1;
+    uint16_t *buf = malloc((size_t)ni * 2 * 2 + (size_t)cap * 2);   /* uidx[ni] + usrc[ni] + hash[cap] */
+    if (!buf) return;
+    uint16_t *uidx = buf, *usrc = buf + ni, *hash = buf + 2 * ni;
+    memset(hash, 0xFF, (size_t)cap * 2);
+    uint32_t nu = 0;
+    for (uint32_t i = 0; i < ni; i++) uidx[i] = 0xFFFF;
+    for (uint32_t pi = 0; pi < m->npolys; pi++) {
+        if (m->px && m->px[pi].wheel) continue;
+        const PmPoly *p = &m->polys[pi];
+        for (uint32_t k = 0; k < p->nverts; k++) {
+            uint32_t ix = p->first_index + k;
+            const PmVert *v = &m->verts[m->indices[ix]];
+            uint32_t bits[3]; memcpy(bits, v, 12);
+            uint32_t h = (bits[0] * 73856093u ^ bits[1] * 19349663u ^ bits[2] * 83492791u) & (cap - 1);
+            for (;;) {
+                uint16_t u = hash[h];
+                if (u == 0xFFFF) { hash[h] = (uint16_t)nu; usrc[nu] = m->indices[ix]; uidx[ix] = (uint16_t)nu; nu++; break; }
+                if (memcmp(&m->verts[usrc[u]], v, 12) == 0) { uidx[ix] = u; break; }
+                h = (h + 1) & (cap - 1);
+            }
+        }
+    }
+    m->uown = buf; m->uidx = uidx; m->usrc = usrc; m->nuniq = nu;
+    float *psz = malloc((m->npolys ? m->npolys : 1) * sizeof(float));
+    if (!psz) return;
+    float mx = 0;
+    for (uint32_t pi = 0; pi < m->npolys; pi++) {
+        const PmPoly *p = &m->polys[pi];
+        if (m->px && m->px[pi].wheel) { psz[pi] = 1e9f; continue; }
+        float best = 0;
+        for (uint32_t a = 0; a < p->nverts; a++)
+            for (uint32_t b = a + 1; b < p->nverts; b++) {
+                const PmVert *va = &m->verts[m->indices[p->first_index + a]], *vb = &m->verts[m->indices[p->first_index + b]];
+                float dx = va->x - vb->x, dy = va->y - vb->y, dz = va->z - vb->z, d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 > best) best = d2;
+            }
+        psz[pi] = sqrtf(best);
+        if (psz[pi] > mx) mx = psz[pi];
+    }
+    m->psz = psz; m->maxpsz = mx;
+}

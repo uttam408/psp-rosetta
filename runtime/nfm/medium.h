@@ -72,6 +72,7 @@ typedef struct {
     int  *col;                   /* 3 per poly, post-snap */
     float *deltaf, *projf;
     uint8_t *typ;
+    int *vc;                     /* per unique vertex, this frame: x, pitched y, pitched z, screen x, screen y (fastxf only) */
 } Inst;
 
 /* paint1/paint2: 0xRRGGBB or -1 to keep the model's own */
@@ -83,6 +84,8 @@ void inst_draw(Medium *m, Inst *o);          /* ContO.d */
 #ifdef NFM_GEFILL   /* pixel fill done by the PSP GE (platform/psp/ge_fill.c); xy = interleaved frame-pixel floats */
 void nfm_ge_poly(const float *xy, int n, uint32_t color);
 void nfm_ge_outline(const float *xy, int n, uint32_t color);
+void nfm_ge_poly_i(const int *xs, const int *ys, int n, float scale, uint32_t color);      /* integer native-space coords x scale */
+void nfm_ge_outline_i(const int *xs, const int *ys, int n, float scale, uint32_t color);
 extern int g_nfm_gefill;   /* 1 = GE fill (default), 0 = CPU rasteriser into Frame.px */
 #endif
 

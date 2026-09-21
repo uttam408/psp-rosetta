@@ -119,6 +119,6 @@ void pile_build(PMesh *out, const Medium *m, int seed, int b, int c)
 
 void pile_free(PMesh *m)
 {
-    free((void *)m->verts); free((void *)m->polys); free((void *)m->indices);
+    free((void *)m->verts); free((void *)m->polys); free((void *)m->indices); free(m->uown); free(m->psz);
     memset(m, 0, sizeof *m);
 }

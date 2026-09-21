@@ -275,9 +275,7 @@ static void fill_ipoly(const Medium *m, const int *xs, const int *ys, int n, int
 {
 #ifdef NFM_GEFILL
     if (g_nfm_gefill) {
-        float xy[MAXN * 2];
-        for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * m->scale; xy[2 * i + 1] = ys[i] * m->scale; }
-        nfm_ge_poly(xy, n, PACK(clamp255(r), clamp255(g), clamp255(b)));
+        nfm_ge_poly_i(xs, ys, n, m->scale, PACK(clamp255(r), clamp255(g), clamp255(b)));
         return;
     }
 #endif
@@ -290,9 +288,7 @@ static void outline_ipoly(const Medium *m, const int *xs, const int *ys, int n, 
 {
 #ifdef NFM_GEFILL
     if (g_nfm_gefill) {
-        float xy[MAXN * 2];
-        for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * m->scale; xy[2 * i + 1] = ys[i] * m->scale; }
-        nfm_ge_outline(xy, n, c);
+        nfm_ge_outline_i(xs, ys, n, m->scale, c);
         return;
     }
 #endif
@@ -426,6 +422,8 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
     for (size_t i = 0; i < n; i++) o->order[i] = (int)i;
     o->hsb = calloc(n * 3, sizeof(float)); o->col = calloc(n * 3, sizeof(int));
     o->deltaf = calloc(n, sizeof(float)); o->projf = calloc(n, sizeof(float)); o->typ = calloc(n, 1);
+    pmesh_uniq((PMesh *)mesh);
+    o->vc = mesh->nuniq ? malloc((size_t)mesh->nuniq * 5 * sizeof(int)) : NULL;
     for (size_t i = 0; i < n; i++) {
         const PmPoly *p = &mesh->polys[i];
         int oc[3] = { p->r, p->g, p->b }, *c = &o->col[i * 3];
@@ -453,7 +451,7 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
 
 void inst_free(Inst *o)
 {
-    free(o->av); free(o->order); free(o->hpqt); free(o->hsec); free(o->n70ok); free(o->n70c); free(o->hsb); free(o->col); free(o->deltaf); free(o->projf); free(o->typ);
+    free(o->av); free(o->order); free(o->hpqt); free(o->hsec); free(o->n70ok); free(o->n70c); free(o->hsb); free(o->col); free(o->deltaf); free(o->projf); free(o->typ); free(o->vc);
     memset(o, 0, sizeof *o);
 }
 
@@ -560,8 +558,16 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     const bool nocol = o->col[pi*3] == o->col[pi*3+1] && o->col[pi*3+1] == o->col[pi*3+2];
     (void)nocol; (void)light;
 
+    int px[MAXN], py[MAXN];
+    const bool cached = m->fastxf && !wheel && o->vc != NULL;
     if (m->fastxf && !wheel) {
-        for (int i = 0; i < N; i++) {
+        if (cached) {
+            const uint16_t *ui = &mesh->uidx[P->first_index];
+            for (int i = 0; i < N; i++) {
+                const int *c = &o->vc[ui[i] * 5];
+                ax[i] = c[0]; pay[i] = c[1]; paz[i] = c[2]; px[i] = c[3]; py[i] = c[4];
+            }
+        } else for (int i = 0; i < N; i++) {
             float x = pv[i]->x, y = pv[i]->y, z = pv[i]->z;
             ax[i] = (int)dot4(m->xf.X, x, y, z);
             pay[i] = (int)dot4(m->xf.Y2, x, y, z);
@@ -605,10 +611,9 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     }
     PROF_ADD(PROF_ROT, t_rot);
     PROF_T(t_prj);
-    int px[MAXN], py[MAXN];
     int c50 = 0, c51 = 0, c52 = 0, c53 = 0, c54 = 0;
     for (int i = 0; i < N; i++) {
-        px[i] = m_xs(m, ax[i], paz[i]); py[i] = m_ys(m, pay[i], paz[i]);
+        if (!cached) { px[i] = m_xs(m, ax[i], paz[i]); py[i] = m_ys(m, pay[i], paz[i]); }
         if (py[i] < m->ih || paz[i] < 10) c50++;
         if (py[i] > m->h  || paz[i] < 10) c51++;
         if (px[i] < m->iw || paz[i] < 10) c52++;
@@ -804,11 +809,27 @@ void inst_draw(Medium *m, Inst *o)
         int n8 = m->cy + jint((o->y - m->y - m->cy) * czy_ - (n2 - m->cz) * szy);
         if (m_ys(m, n8 + maxR, n3) > m->ih && m_ys(m, n8 - maxR, n3) < m->h) {
             const uint32_t np = mesh->npolys;
+            /* pre-transform tiny cull: a poly whose worst-case projected extent (longest model-space diagonal * focus / nearest
+             * possible depth) is within the distance-ramped tiny threshold would be dropped by the post-projection tiny test
+             * anyway (its actual extent is <= the bound, and the threshold at the object's nearest depth is <= the poly's own),
+             * so skip its transform.  Off for checkpoints, trackers, wheels, and objects that reach the camera. */
+            float pre_k = 0.0f; int pre_T = -1;
+            if (m->tinyfar > 0 && !o->always && m->trk == 0 && mesh->psz && n4 != -1) {
+                const int dmin = n3 - maxR - 2;
+                if (dmin >= 10) {
+                    const int D = (int)((int64_t)m->fade[disline] * m->far_pct / 100);
+                    const int dz = dmin < D ? dmin : D;
+                    pre_T = D > 0 ? m->tiny + (int)((int64_t)(m->tinyfar - m->tiny) * dz / D) : m->tiny;
+                    pre_k = (float)m->focus_point / (float)dmin;
+                }
+            }
+            const bool all_tiny = pre_T >= 0 && (mesh->maxpsz + 3.0f) * pre_k <= (float)pre_T;
             PROF_T(t_so);
             /* painter order: larger av first, ties by lower index.  av barely changes between frames, so
              * insertion-sorting last frame's order is ~O(np) and gives exactly the O(np^2) rank result. */
             int *order = o->order;
             const int *av = o->av;
+            if (!all_tiny)
             for (uint32_t i = 1; i < np; i++) {
                 const int key = order[i], kav = av[key];
                 int j = (int)i - 1;
@@ -816,10 +837,23 @@ void inst_draw(Medium *m, Inst *o)
                 order[j + 1] = key;
             }
             PROF_ADD(PROF_SORT, t_so);
-            if (m->fastxf) xf_build(m, o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy);
+            if (m->fastxf && !all_tiny) {
+                xf_build(m, o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy);
+                if (o->vc) {   /* each shared vertex is transformed and projected once per object per frame */
+                    const uint16_t *us = mesh->usrc;
+                    for (uint32_t u = 0; u < mesh->nuniq; u++) {
+                        const PmVert *v = &mesh->verts[us[u]];
+                        float x = v->x, y = v->y, z = v->z;
+                        int *c = &o->vc[u * 5];
+                        c[0] = (int)dot4(m->xf.X, x, y, z); c[1] = (int)dot4(m->xf.Y2, x, y, z); c[2] = (int)dot4(m->xf.Z2, x, y, z);
+                        c[3] = m_xs(m, c[0], c[2]); c[4] = m_ys(m, c[1], c[2]);
+                    }
+                }
+            }
             PROF_T(t_pl);
-            for (uint32_t i = 0; i < np; i++) {
+            for (uint32_t i = 0; i < np && !all_tiny; i++) {
                 g_polys_in++;
+                if (pre_T >= 0 && (mesh->psz[order[i]] + 3.0f) * pre_k <= (float)pre_T) continue;
                 NFM_TRACE("poly", (int)order[i], (int)np);
                 plane_draw(m, o, (uint32_t)order[i], o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy,
                            o->noline || (mesh->flags & (PMF_STONECOLD | PMF_NEWSTONE)) != 0, n4);

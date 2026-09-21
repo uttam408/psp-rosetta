@@ -18,6 +18,11 @@ typedef struct { uint32_t c; int16_t x, y, z, pad; } GV;   /* GU_COLOR_8888 | GU
 #define CMD_WORDS 6         /* worst case per DrawArray: vtype + base + vaddr + prim (+ slack) */
 #define LIST_CAP (LIST_WORDS - 256)
 
+#ifdef NFM_GESKIP2   /* profiling: do all the prep, skip the actual GE draw calls */
+#define DRAW(prim, n, base) ((void)0)
+#else
+#define DRAW(prim, n, base) sceGuDrawArray(prim, VFMT, n, NULL, base)
+#endif
 static GV __attribute__((aligned(16))) g_v[NV];
 static inline void put(int *k, uint32_t c, int x, int y);
 static int g_nv, g_w = 480, g_h = 270;
@@ -50,7 +55,9 @@ void nfm_ge_finish(void)
       t[0] = (GV){ 0xFF0000FFu, 10, 10, 0, 0 }; t[1] = (GV){ 0xFF0000FFu, 110, 110, 0, 0 };
       sceGuDrawArray(GU_SPRITES, VFMT, 2, NULL, t); }
 #endif
+#ifndef NFM_NOWB   /* profiling only: skipping this is wrong on real hardware */
     sceKernelDcacheWritebackRange(g_v, (unsigned)g_nv * sizeof(GV));
+#endif
     sceGuFinish();
 }
 
@@ -101,8 +108,7 @@ static inline long cross(int ax, int ay, int bx, int by, int cx, int cy) { retur
 static int is_convex(const int *x, const int *y, int n)
 {
     int sign = 0;
-    for (int i = 0; i < n; i++) {
-        int j = (i + 1) % n, k = (i + 2) % n;
+    for (int i = 0, j = 1, k = 2; i < n; i++, j = j + 1 == n ? 0 : j + 1, k = k + 1 == n ? 0 : k + 1) {
         long c = cross(x[i], y[i], x[j], y[j], x[k], y[k]);
         if (c == 0) continue;
         int s = c > 0 ? 1 : -1;
@@ -121,11 +127,8 @@ static int in_tri(int px, int py, int ax, int ay, int bx, int by, int cx, int cy
     return !(neg && pos);
 }
 
-void nfm_ge_poly(const float *xy, int n, uint32_t color)
+static void emit_poly(const int *x, const int *y, int n, uint32_t color)
 {
-    int x[MAXV], y[MAXV];
-    n = prep(xy, n, x, y);
-    if (!n) return;
     uint32_t c = color | 0xFF000000u;
     if (g_nv + 3 * n > NV || g_cmd + CMD_WORDS > LIST_CAP) { g_ge_dropped++; return; }
     g_cmd += CMD_WORDS;
@@ -133,7 +136,7 @@ void nfm_ge_poly(const float *xy, int n, uint32_t color)
     if (is_convex(x, y, n)) {
         int k = g_nv;
         for (int i = 0; i < n; i++) put(&k, c, x[i], y[i]);
-        sceGuDrawArray(GU_TRIANGLE_FAN, VFMT, n, NULL, base);
+        DRAW(GU_TRIANGLE_FAN, n, base);
         g_nv = k;
         return;
     }
@@ -165,18 +168,12 @@ void nfm_ge_poly(const float *xy, int n, uint32_t color)
     }
     if (m == 3) { put(&k, c, x[idx[0]], y[idx[0]]); put(&k, c, x[idx[1]], y[idx[1]]); put(&k, c, x[idx[2]], y[idx[2]]); }
     int cnt = k - g_nv;
-    if (cnt >= 3) sceGuDrawArray(GU_TRIANGLES, VFMT, cnt, NULL, base);
+    if (cnt >= 3) DRAW(GU_TRIANGLES, cnt, base);
     g_nv = k;
 }
 
-void nfm_ge_outline(const float *xy, int n, uint32_t color)
+static void emit_outline(const int *x, const int *y, int n, uint32_t color)
 {
-    int x[MAXV], y[MAXV];
-    if (n < 2 || n > MAXV - 8) return;
-    for (int i = 0; i < n; i++) {
-        if (!(fabsf(xy[2 * i]) < 3000.f) || !(fabsf(xy[2 * i + 1]) < 3000.f)) return;   /* far off-screen outline: skip (int16 safety) */
-        x[i] = (int)floorf(xy[2 * i] + 0.5f); y[i] = (int)floorf(xy[2 * i + 1] + 0.5f);
-    }
     if (g_nv + n + 1 > NV || g_cmd + CMD_WORDS > LIST_CAP) { g_ge_dropped++; return; }
     g_cmd += CMD_WORDS;
     uint32_t c = color | 0xFF000000u;
@@ -184,6 +181,70 @@ void nfm_ge_outline(const float *xy, int n, uint32_t color)
     int k = g_nv;
     for (int i = 0; i < n; i++) put(&k, c, x[i], y[i]);
     put(&k, c, x[0], y[0]);
-    sceGuDrawArray(GU_LINE_STRIP, VFMT, n + 1, NULL, base);
+    DRAW(GU_LINE_STRIP, n + 1, base);
     g_nv = k;
+}
+
+/* float entry points: clip/validate, then emit (used for the rare off-screen-heavy polygons) */
+void nfm_ge_poly(const float *xy, int n, uint32_t color)
+{
+#ifdef NFM_GESKIP
+    return;   /* profiling: measure everything except GE submission */
+#endif
+    int x[MAXV], y[MAXV];
+    n = prep(xy, n, x, y);
+    if (n) emit_poly(x, y, n, color);
+}
+
+void nfm_ge_outline(const float *xy, int n, uint32_t color)
+{
+#ifdef NFM_GESKIP
+    return;
+#endif
+    int x[MAXV], y[MAXV];
+    if (n < 2 || n > MAXV - 8) return;
+    for (int i = 0; i < n; i++) {
+        if (!(fabsf(xy[2 * i]) < 3000.f) || !(fabsf(xy[2 * i + 1]) < 3000.f)) return;   /* far off-screen outline: skip (int16 safety) */
+        x[i] = (int)floorf(xy[2 * i] + 0.5f); y[i] = (int)floorf(xy[2 * i + 1] + 0.5f);
+    }
+    emit_outline(x, y, n, color);
+}
+
+/* integer entry points: medium.c already has integer native-space coordinates, so the common case (everything
+ * within +-3000 px after scaling) is just a scale + round with no float validation or floorf calls */
+#define RND(v) ((int)((v) + 4096.5f) - 4096)   /* floor(v + 0.5) for v > -4096 */
+void nfm_ge_poly_i(const int *xs, const int *ys, int n, float scale, uint32_t color)
+{
+#ifdef NFM_GESKIP
+    return;
+#endif
+    int x[MAXV], y[MAXV], far = 0;
+    if (n < 3 || n > MAXV - 8) return;
+    for (int i = 0; i < n; i++) {
+        float fx = xs[i] * scale, fy = ys[i] * scale;
+        far |= (fx > 3000.f) | (fx < -3000.f) | (fy > 3000.f) | (fy < -3000.f);
+        x[i] = RND(fx); y[i] = RND(fy);
+    }
+    if (far) {
+        float xy[MAXV * 2];
+        for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * scale; xy[2 * i + 1] = ys[i] * scale; }
+        nfm_ge_poly(xy, n, color);
+        return;
+    }
+    emit_poly(x, y, n, color);
+}
+
+void nfm_ge_outline_i(const int *xs, const int *ys, int n, float scale, uint32_t color)
+{
+#ifdef NFM_GESKIP
+    return;
+#endif
+    int x[MAXV], y[MAXV];
+    if (n < 2 || n > MAXV - 8) return;
+    for (int i = 0; i < n; i++) {
+        float fx = xs[i] * scale, fy = ys[i] * scale;
+        if (fx > 3000.f || fx < -3000.f || fy > 3000.f || fy < -3000.f) return;   /* far off-screen outline: skip (int16 safety) */
+        x[i] = RND(fx); y[i] = RND(fy);
+    }
+    emit_outline(x, y, n, color);
 }

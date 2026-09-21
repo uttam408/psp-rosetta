@@ -98,6 +98,7 @@ bool car_mesh_build(PMesh *dst, const PMesh *src)
     if (!buf) return false;
     *dst = *src;
     dst->owned = NULL;
+    dst->uidx = dst->usrc = NULL; dst->uown = NULL; dst->nuniq = 0; dst->psz = NULL; dst->maxpsz = 0;   /* built lazily for the new mesh */
     dst->xown = buf;
     Build b = { (PmVert *)(buf + ov), (PmPoly *)(buf + op), (uint16_t *)(buf + oi), (PmPolyX *)(buf + ox), 0, 0, 0 };
     memcpy(b.v, src->verts, src->nverts * sizeof(PmVert));
