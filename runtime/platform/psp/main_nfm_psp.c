@@ -314,8 +314,8 @@ int main(void)
                 acc_phys += dp; nphys++; if (dp > max_phys) max_phys = dp;
             }
             if (tn - tphys >= 33333) tphys = tn;
-            med.x = dci->x - (int)(m_sin(dci->xz) * 900) - med.cx; med.z = dci->z - (int)(m_cos(dci->xz) * 900);
-            med.y = dci->y - 490; med.xz = dci->xz; med.zy = 10;
+            med.x = dci->x + (int)(m_sin(dci->xz) * 900) - med.cx; med.z = dci->z - (int)(m_cos(dci->xz) * 900);
+            med.y = dci->y - 490; med.xz = -dci->xz; med.zy = 10;
         } else {
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = (b & PSP_CTRL_SQUARE) ? 120 : 40;
