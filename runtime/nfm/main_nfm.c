@@ -196,9 +196,22 @@ int main(int argc, char **argv)
         return 0;
     }
     if (strncmp(argv[2], "data/stage/", 11) == 0) return stage_main(argc, argv);
+    /* a .pmesh path on disk loads directly, so generated LOD variants can be viewed without repacking */
     const PakAsset *a = pak_find(argv[2]);
     PMesh mesh;
-    if (!a || !pmesh_load(&mesh, a->data, a->size)) {
+    uint8_t *fbuf = NULL;
+    if (!a) {
+        FILE *fp = fopen(argv[2], "rb");
+        if (fp) {
+            fseek(fp, 0, SEEK_END); long n = ftell(fp); fseek(fp, 0, SEEK_SET);
+            fbuf = malloc((size_t)n);
+            if (fbuf && fread(fbuf, 1, (size_t)n, fp) == (size_t)n) {
+                if (!pmesh_load(&mesh, fbuf, (size_t)n)) { fprintf(stderr, "bad .pmesh file: %s\n", argv[2]); return 1; }
+            } else { free(fbuf); fbuf = NULL; }
+            fclose(fp);
+        }
+    }
+    if (!fbuf && (!a || !pmesh_load(&mesh, a->data, a->size))) {
         fprintf(stderr, "no such mesh (or bad .pmesh): %s\n", argv[2]);
         return 1;
     }
@@ -212,6 +225,7 @@ int main(int argc, char **argv)
     Inst inst;
     inst_init(&inst, &med, &mesh, 0, 0, 0, 0, -1, -1);
     int dist = (int)mesh.max_r * 2 + 150;
+    for (int i = 3; i + 1 < argc; i++) if (strcmp(argv[i], "--dist") == 0) dist = atoi(argv[i + 1]);
 
     bool shot = false, bench = false;
     const char *out = NULL;
