@@ -112,6 +112,14 @@ static void blit_ge_scaled(int rw, int rh, void *vram_off)
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
 }
 
+#ifdef NFM_GEFILL   /* polygon fill on the GE: see ge_fill.c; medium.c emits triangles instead of writing g_px */
+void nfm_ge_begin(unsigned int *list, void *vram_off, int w, int h);
+void nfm_ge_finish(void);
+void nfm_ge_sync(void);
+extern unsigned g_ge_dropped, g_ge_nv;
+static unsigned int __attribute__((aligned(16))) g_gelist_fill[32768];
+#endif
+
 #ifdef NFM_PROF
 static unsigned long long prof_now(void) { return sceKernelGetSystemTimeWide(); }
 #endif
@@ -283,14 +291,32 @@ int main(void)
         g_polys_in = g_polys_drawn = 0;
         unsigned long long t_a = sceKernelGetSystemTimeWide();
         if (first && trace_on) { { FILE *z = fopen("nfm_trace.txt", "w"); if (z) { for (int k = 0; k < 64; k++) fputc(' ', z); fclose(z); } } g_trace_f = fopen("nfm_trace.txt", "r+"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
+#ifdef NFM_GEFILL
+        nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
+#endif
         scene_draw(&med, &sc);
         if (first && trace_on) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
+#ifdef NFM_GEFILL
+        nfm_ge_finish();
+        unsigned long long t_b = sceKernelGetSystemTimeWide();   /* CPU list building ends here; blit column = waiting for the GE */
+        nfm_ge_sync();
+        (void)cpu_blit; (void)vram;
+#else
         unsigned long long t_b = sceKernelGetSystemTimeWide();
 
         if (lowres) blit_ge_scaled(f.w, f.h, (void *)(uintptr_t)(cur * FBSZ));
         else if (cpu_blit) blit_cpu(vram[cur]);
         else blit_ge((uint32_t *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ));
+#endif
         unsigned long long t_c = sceKernelGetSystemTimeWide();
+#ifdef NFM_SHOT   /* -DNFM_SHOT: dump frame 60 (480x270 ABGR) to nfm_shot.raw for emulator checks */
+        { static int nf; if (++nf == 60) {   /* GE copy VRAM -> RAM: PPSSPP keeps GPU-rendered frames out of guest VRAM until a transfer asks */
+            sceGuStart(GU_DIRECT, g_gelist);
+            sceGuCopyImage(GU_PSM_8888, 0, 0, W, H, STRIDE, (void *)((uintptr_t)sceGeEdramGetAddr() + cur * FBSZ), 0, 0, W, g_px);
+            sceGuTexSync(); sceGuFinish(); sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
+            sceKernelDcacheInvalidateRange(g_px, sizeof g_px);
+            FILE *z = fopen("nfm_shot.raw", "wb"); if (z) { fwrite(g_px, 4, W * H, z); fclose(z); } } }
+#endif
         acc_draw += t_b - t_a; acc_blit += t_c - t_b;
         if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
@@ -313,6 +339,9 @@ int main(void)
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
             if (log) { fprintf(log, "%s far %d %dx%d %s %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : cpu_blit ? "cpublit" : "geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames); acc_draw = acc_blit = 0;
+#ifdef NFM_GEFILL
+            if (log) fprintf(log, "  ge: %u verts, %u dropped\n", g_ge_nv, g_ge_dropped);
+#endif
             if (log && driving) fprintf(log, "  drive: pos %d,%d,%d speed %.1f cp %d hit %d\n", dci->x, dci->y, dci->z, mad.speed, mad.env->checkpoint, mad.hitmag);
 #ifdef NFM_PROF
                 fprintf(log, "  prof/frame ms: sort %.1f  plane-total %.1f (shade %.1f fill %.1f => xform+cull %.1f)  [rot %.1f proj %.1f]\n", g_prof[PROF_SORT] / 1000.0 / frames, g_prof[PROF_PLANE] / 1000.0 / frames, g_prof[PROF_SHADE] / 1000.0 / frames, g_prof[PROF_FILL] / 1000.0 / frames, (g_prof[PROF_PLANE] - g_prof[PROF_SHADE] - g_prof[PROF_FILL]) / 1000.0 / frames, g_prof[PROF_ROT] / 1000.0 / frames, g_prof[PROF_PROJ] / 1000.0 / frames);

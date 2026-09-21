@@ -80,6 +80,11 @@ void inst_init(Inst *o, Medium *m, const PMesh *mesh, int x, int y, int z, int x
 void inst_free(Inst *o);
 void inst_draw(Medium *m, Inst *o);          /* ContO.d */
 
+#ifdef NFM_GEFILL   /* pixel fill done by the PSP GE (platform/psp/ge_fill.c); xy = interleaved frame-pixel floats */
+void nfm_ge_poly(const float *xy, int n, uint32_t color);
+void nfm_ge_outline(const float *xy, int n, uint32_t color);
+#endif
+
 extern int g_polys_in, g_polys_drawn;
 /* optional crash-bisect hook (NULL = off); platforms overwrite a marker with the latest call */
 extern void (*g_nfm_trace)(const char *tag, int a, int b);
