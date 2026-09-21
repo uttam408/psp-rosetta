@@ -314,8 +314,11 @@ int main(void)
                 acc_phys += dp; nphys++; if (dp > max_phys) max_phys = dp;
             }
             if (tn - tphys >= 33333) tphys = tn;
-            med.x = dci->x + (int)(m_sin(dci->xz) * 900) - med.cx; med.z = dci->z - (int)(m_cos(dci->xz) * 900);
-            med.y = dci->y - 490; med.xz = -dci->xz; med.zy = 10;
+            /* chase the original's lagged camera angle (Mad.cxz trails the travel direction), not the car's own
+             * heading, so the car swings across the view through a turn.  cxz can leave 0..360 while unwinding. */
+            int cyaw = ((mad.cxz % 360) + 360) % 360;
+            med.x = dci->x + (int)(m_sin(cyaw) * 900) - med.cx; med.z = dci->z - (int)(m_cos(cyaw) * 900);
+            med.y = dci->y - 490; med.xz = (360 - cyaw) % 360; med.zy = 10;
         } else {
         float sy = m_sin(med.xz), cy = m_cos(med.xz);
         int sp = (b & PSP_CTRL_SQUARE) ? 120 : 40;

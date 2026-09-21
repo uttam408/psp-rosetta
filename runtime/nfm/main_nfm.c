@@ -124,9 +124,9 @@ static int stage_main(int argc, char **argv)
         }
         /* chase camera. The car travels along (-sin xz, cos xz) but the view looks along (sin yaw, cos yaw),
          * so the camera sits at +sin/-cos of the car and uses yaw = -xz to stay behind it.
-         * NFM_CAMYAW=cxz switches to Mad.cxz (the original's damped camera angle) for A/B. */
+         * The angle is Mad.cxz, the original's lagged camera angle; NFM_CAMYAW=xz locks rigidly to the car. */
         const char *cy = getenv("NFM_CAMYAW");
-        int cyaw = (cy && strcmp(cy, "cxz") == 0) ? mad.cxz : ci->xz;
+        int cyaw = (cy && strcmp(cy, "xz") == 0) ? ci->xz : mad.cxz;
         camx = ci->x + (int)(m_sin(cyaw) * 900); camz = ci->z - (int)(m_cos(cyaw) * 900); yaw = -cyaw;
     }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
