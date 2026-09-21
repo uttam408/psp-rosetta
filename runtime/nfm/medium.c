@@ -823,7 +823,19 @@ void inst_draw(Medium *m, Inst *o)
                     pre_k = (float)m->focus_point / (float)dmin;
                 }
             }
-            const bool all_tiny = pre_T >= 0 && (mesh->maxpsz + 3.0f) * pre_k <= (float)pre_T;
+            /* mesh LOD: same ramp, but on estimated projected area rather than the diagonal bound.  k*k converts
+             * model-space area to screen px^2; pre_A is lod% of the tiny threshold's area at this object's depth.
+             * Gated by a diagonal limit (LOD_DIAG * T): a long thin poly (palm frond, checkpoint ring segment) has
+             * almost no area but a full-length outline, so dropping it on area alone is very visible. */
+            float pre_kk = 0.0f, pre_A = -1.0f, pre_TD = 0.0f;
+            if (m->lod > 0 && pre_T >= 0 && mesh->parea) {
+                pre_kk = pre_k * pre_k;
+                pre_A = (float)pre_T * (float)pre_T * (float)m->lod / 100.0f;
+                pre_TD = (float)pre_T * (m->loddiag > 0.0f ? m->loddiag : NFM_LOD_DIAG);
+            }
+            const bool all_tiny = (pre_T >= 0 && (mesh->maxpsz + 3.0f) * pre_k <= (float)pre_T) ||
+                                  (pre_A >= 0.0f && mesh->maxparea * pre_kk <= pre_A &&
+                                   (mesh->maxpsz + 3.0f) * pre_k <= pre_TD);
             PROF_T(t_so);
             /* painter order: larger av first, ties by lower index.  av barely changes between frames, so
              * insertion-sorting last frame's order is ~O(np) and gives exactly the O(np^2) rank result. */
@@ -854,6 +866,8 @@ void inst_draw(Medium *m, Inst *o)
             for (uint32_t i = 0; i < np && !all_tiny; i++) {
                 g_polys_in++;
                 if (pre_T >= 0 && (mesh->psz[order[i]] + 3.0f) * pre_k <= (float)pre_T) continue;
+                if (pre_A >= 0.0f && mesh->parea[order[i]] * pre_kk <= pre_A &&
+                    (mesh->psz[order[i]] + 3.0f) * pre_k <= pre_TD) continue;
                 NFM_TRACE("poly", (int)order[i], (int)np);
                 plane_draw(m, o, (uint32_t)order[i], o->x - m->x, o->y - m->y, o->z - m->z, o->xz, o->xy, o->zy,
                            o->noline || (mesh->flags & (PMF_STONECOLD | PMF_NEWSTONE)) != 0, n4);

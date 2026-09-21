@@ -205,12 +205,18 @@ int main(void)
 #ifndef NFM_TINY_NEAR
 #define NFM_TINY_NEAR 3
 #endif
+#ifndef NFM_LOD
+#define NFM_LOD 150   /* mesh LOD: skip polys whose estimated projected area is under NFM_LOD% of the tiny threshold's area; 0 = off */
+#endif
 #ifdef NFM_EXACT_DEFAULT
     bool fastxf = false;
 #else
     bool fastxf = true;   /* ~10-15% cheaper per poly on hardware, 0.03% of pixels differ from the Java-exact path */
 #endif
-    int cur = 0, stage_i = 0, want = 0, overlay = 1, far_pct = 60, lowres = 0;
+#ifndef NFM_START_STAGE
+#define NFM_START_STAGE 0   /* -DNFM_START_STAGE=N: boot straight into stage N (0-based), for A/B profiling of a heavy stage */
+#endif
+    int cur = 0, stage_i = NFM_START_STAGE, want = 0, overlay = 1, far_pct = 60, lowres = 0, lod = NFM_LOD;
 #ifdef NFM_LOWRES
     lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
 #endif
@@ -243,7 +249,7 @@ int main(void)
             if (!loaded) { want = 1; continue; }
             medium_init(&med, &f);
             med.fastxf = fastxf;
-            med.tiny = NFM_TINY_NEAR; med.tinyfar = NFM_TINY_FAR;
+            med.tiny = NFM_TINY_NEAR; med.tinyfar = NFM_TINY_FAR; med.lod = lod;
             stage_apply_env(&st, &med);
             med.far_pct = far_pct;
             step("medium ready, building scene");
@@ -292,6 +298,7 @@ int main(void)
         }
 #endif
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
+        if (edge & PSP_CTRL_LTRIGGER) { lod = lod ? 0 : NFM_LOD; med.lod = lod; }   /* LOD on/off (A/B on device) */
         if (driving) {
             /* D-pad / analog: up = gas, down = brake, left/right = steer, Cross = handbrake; physics ticks at the original's 30 Hz */
             Control ctl = { .left = (b & PSP_CTRL_LEFT) || ax < -40, .right = (b & PSP_CTRL_RIGHT) || ax > 40,
@@ -357,7 +364,7 @@ int main(void)
         if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
-            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% %dx%d %s ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, f.w, f.h, med.fastxf ? "FAST" : "exact");
+            pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% lod %d %dx%d %s ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, lod, f.w, f.h, med.fastxf ? "FAST" : "exact");
             if (driving) {
                 pspDebugScreenSetXY(0, 1);
                 pspDebugScreenPrintf("%-14s speed %3d  cp %d  hit %d ", NFM_CARS[car_i].name, (int)mad.speed, mad.env->checkpoint, mad.hitmag);
@@ -375,7 +382,7 @@ int main(void)
         unsigned long long now = sceKernelGetSystemTimeWide();
         if (now - tlast >= 1000000) {
             fps = frames * 1e6f / (float)(now - tlast);
-            if (log) { fprintf(log, "%s far %d %dx%d %s %s %.1f fps %d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, f.w, f.h, lowres ? "gescale" : MEMCPY_BLIT ? "cpublit" : GEFILL_ON ? "gefill" : "cpufill+geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames);
+            if (log) { fprintf(log, "%s far %d lod %d %dx%d %s %s %.1f fps %d/%d polys | draw %.1f ms blit %.1f ms\n", g_names[stage_i], far_pct, lod, f.w, f.h, lowres ? "gescale" : MEMCPY_BLIT ? "cpublit" : GEFILL_ON ? "gefill" : "cpufill+geblit", med.fastxf ? "fast" : "exact", fps, g_polys_drawn, g_polys_in, acc_draw / 1000.0 / frames, acc_blit / 1000.0 / frames);
             if (log) fprintf(log, "  worst frame %.1f ms", max_frame / 1000.0);
             if (log && driving && nphys) fprintf(log, "  phys %.2f ms/tick (max %.2f, %u ticks)", acc_phys / 1000.0 / nphys, max_phys / 1000.0, nphys);
             if (log) fputc('\n', log);

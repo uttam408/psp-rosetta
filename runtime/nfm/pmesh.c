@@ -56,7 +56,7 @@ bool pmesh_load(PMesh *m, const uint8_t *d, size_t size)
     return true;
 }
 
-void pmesh_free(PMesh *m) { free(m->owned); free(m->xown); free(m->uown); free(m->psz); m->owned = m->xown = m->uown = NULL; m->psz = NULL; m->maxpsz = 0; m->uidx = m->usrc = NULL; m->nuniq = 0; }
+void pmesh_free(PMesh *m) { free(m->owned); free(m->xown); free(m->uown); free(m->psz); free(m->parea); m->owned = m->xown = m->uown = NULL; m->psz = NULL; m->maxpsz = 0; m->parea = NULL; m->maxparea = 0; m->uidx = m->usrc = NULL; m->nuniq = 0; }
 
 void pmesh_uniq(PMesh *m)
 {
@@ -103,4 +103,26 @@ void pmesh_uniq(PMesh *m)
         if (psz[pi] > mx) mx = psz[pi];
     }
     m->psz = psz; m->maxpsz = mx;
+
+    /* model-space area per poly (fan triangulation, |cross|/2).  The psz bound above is the longest diagonal, so
+     * it keeps long thin polys that cover almost no pixels; area is what the LOD cull needs to drop them. */
+    float *pa = malloc((m->npolys ? m->npolys : 1) * sizeof(float));
+    if (!pa) return;
+    float mxa = 0;
+    for (uint32_t pi = 0; pi < m->npolys; pi++) {
+        const PmPoly *p = &m->polys[pi];
+        if (m->px && m->px[pi].wheel) { pa[pi] = 1e18f; continue; }
+        double a2 = 0;
+        const PmVert *v0 = &m->verts[m->indices[p->first_index]];
+        for (uint32_t k = 1; k + 1 < p->nverts; k++) {
+            const PmVert *va = &m->verts[m->indices[p->first_index + k]], *vb = &m->verts[m->indices[p->first_index + k + 1]];
+            double ux = va->x - v0->x, uy = va->y - v0->y, uz = va->z - v0->z;
+            double wx = vb->x - v0->x, wy = vb->y - v0->y, wz = vb->z - v0->z;
+            double cx = uy * wz - uz * wy, cy = uz * wx - ux * wz, cz = ux * wy - uy * wx;
+            a2 += sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
+        }
+        pa[pi] = (float)a2;
+        if (pa[pi] > mxa) mxa = pa[pi];
+    }
+    m->parea = pa; m->maxparea = mxa;
 }

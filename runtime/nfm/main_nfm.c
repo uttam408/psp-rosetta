@@ -87,6 +87,8 @@ static int stage_main(int argc, char **argv)
         if (strcmp(argv[i], "--far") == 0 && i + 1 < argc) med.far_pct = atoi(argv[i + 1]);
         if (strcmp(argv[i], "--nochkalways") == 0) for (uint32_t k = 0; k < sc.n; k++) sc.inst[k].always = false;
         if (strcmp(argv[i], "--tiny") == 0 && i + 2 < argc) { med.tiny = atoi(argv[i + 1]); med.tinyfar = atoi(argv[i + 2]); }
+        if (strcmp(argv[i], "--lod") == 0 && i + 1 < argc) med.lod = atoi(argv[i + 1]);
+        if (strcmp(argv[i], "--loddiag") == 0 && i + 1 < argc) med.loddiag = (float)atof(argv[i + 1]);
     }
     for (int i = 3; i < argc; i++)
         if (strcmp(argv[i], "--car") == 0 && i + 1 < argc) {

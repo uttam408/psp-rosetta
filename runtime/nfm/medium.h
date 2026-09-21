@@ -14,6 +14,13 @@ typedef struct {
     uint32_t *px;          /* 0x00RRGGBB */
 } Frame;
 
+/* how many multiples of the tiny threshold a poly's projected diagonal may reach and still be LOD-culled.
+ * Thin polys (palm fronds, checkpoint ring segments) have almost no area but a full-length visible outline,
+ * so the area test alone erases them; this keeps the cull to compact detail faces. */
+#ifndef NFM_LOD_DIAG
+#define NFM_LOD_DIAG 2.0f
+#endif
+
 typedef struct {
     int cx, cy, cz;        /* fixed camera pivot: 400, 225, 50 */
     int xz, zy;            /* camera yaw / pitch, integer degrees */
@@ -28,6 +35,10 @@ typedef struct {
     bool fastxf;   /* float-composed transform (approximate, faster); off = Java-exact integer rot() chain */
     struct { float X[4], Y1[4], Z1[4], Y2[4], Z2[4], Xo[4], Zo[4]; } xf;   /* per-object rows: world-rel yaw'd (X,Y1,Z1), pitched (Y2,Z2), obj-rotated (Xo,Zo) */
     int far_pct;   /* draw-distance cull scale in percent (100 = original Java behaviour) */
+    float loddiag; /* diagonal gate multiple; 0 = NFM_LOD_DIAG */
+    int lod;       /* mesh LOD strength, percent of the tiny threshold's area; 0 = off (exact).  A poly whose estimated
+                    * projected area falls under lod% of T*T, and whose diagonal stays within NFM_LOD_DIAG*T, is
+                    * skipped before any transform.  Lossy: distant detail faces disappear a little early. */
     int cfade[3], csky[3], cgrnd[3], crgrnd[3], cpol[3], osky[3], ogrnd[3], snap[3];
     int texture[4];
     int adv;               /* 500 */

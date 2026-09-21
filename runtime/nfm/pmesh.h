@@ -55,6 +55,8 @@ typedef struct {
     void *uown;
     float *psz;                  /* per poly: max pairwise vertex distance in model units (1e9 for wheel polys); from pmesh_uniq */
     float maxpsz;                /* max of psz over non-wheel polys */
+    float *parea;                /* per poly: model-space area (1e18 for wheel polys); from pmesh_uniq, drives the LOD cull */
+    float maxparea;              /* max of parea over non-wheel polys */
     void *owned;   /* aligned copy of the blob when the source was misaligned (free with pmesh_free) */
 } PMesh;
 
