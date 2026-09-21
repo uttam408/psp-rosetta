@@ -107,7 +107,7 @@ extern void (*g_nfm_trace)(const char *tag, int a, int b);
 
 /* -DNFM_PROF: accumulate microseconds per phase (platform sets g_prof_now). */
 #ifdef NFM_PROF
-enum { PROF_SORT, PROF_PLANE, PROF_SHADE, PROF_FILL, PROF_ROT, PROF_PROJ, PROF_N };
+enum { PROF_SORT, PROF_PLANE, PROF_SHADE, PROF_FILL, PROF_ROT, PROF_PROJ, PROF_BACK, PROF_N };
 extern unsigned long long (*g_prof_now)(void);
 extern unsigned long long g_prof[PROF_N];
 #define PROF_T(v) unsigned long long v = g_prof_now()

@@ -202,7 +202,9 @@ static int by_dist_desc(const void *a, const void *b)
 
 void scene_draw(Medium *m, Scene *sc)
 {
+    PROF_T(t_bk);
     medium_draw_backdrop(m);
+    PROF_ADD(PROF_BACK, t_bk);
     NFM_TRACE("backdrop done", 0, 0);
     if (sc->n > g_ocap) { g_ocap = sc->n; g_order = realloc(g_order, g_ocap * sizeof *g_order); }
     uint32_t nd = 0;

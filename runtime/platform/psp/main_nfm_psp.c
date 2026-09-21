@@ -221,7 +221,9 @@ int main(void)
     lowres = NFM_LOWRES_DEFAULT || (p0.Buttons & PSP_CTRL_TRIANGLE) != 0;
 #endif
     unsigned prevb = p0.Buttons;   /* buttons held at launch must not count as presses */
-    FILE *log = fopen("nfm_log.txt", "w");
+    /* append, not truncate: a GE-fill run followed by a CPU-fill run must both survive for A/B comparison */
+    FILE *log = fopen("nfm_log.txt", "a");
+    if (log) fprintf(log, "==== boot: fill=%s cpu %d MHz ====\n", g_nfm_gefill ? "ge" : "cpu", (int)scePowerGetCpuClockFrequency());
 
     static Stage st; static Scene sc; static Medium med;
     static MadEnv menv; static Mad mad; static CarObj co;
@@ -390,9 +392,9 @@ int main(void)
 #ifdef NFM_GEFILL
             if (log && g_nfm_gefill) fprintf(log, "  ge: %u verts, ~%u list words, %u dropped\n", g_ge_nv, g_ge_cmd, g_ge_dropped);
 #endif
-            if (log && driving) fprintf(log, "  drive: %s pos %d,%d,%d speed %.1f cp %d hit %d\n", NFM_CARS[car_i].mesh, dci->x, dci->y, dci->z, mad.speed, mad.env->checkpoint, mad.hitmag);
+            if (log && driving) fprintf(log, "  drive: %s pos %d,%d,%d speed %.1f cp %d hit %d | car xz %d xy %d zy %d wxz %d | cam xz %d | mad mxz %d cxz %d fxz %d\n", NFM_CARS[car_i].mesh, dci->x, dci->y, dci->z, mad.speed, mad.env->checkpoint, mad.hitmag, dci->xz, dci->xy, dci->zy, dci->wxz, med.xz, mad.mxz, mad.cxz, mad.fxz);
 #ifdef NFM_PROF
-                fprintf(log, "  prof/frame ms: sort %.1f  plane-total %.1f (shade %.1f fill %.1f => xform+cull %.1f)  [rot %.1f proj %.1f]\n", g_prof[PROF_SORT] / 1000.0 / frames, g_prof[PROF_PLANE] / 1000.0 / frames, g_prof[PROF_SHADE] / 1000.0 / frames, g_prof[PROF_FILL] / 1000.0 / frames, (g_prof[PROF_PLANE] - g_prof[PROF_SHADE] - g_prof[PROF_FILL]) / 1000.0 / frames, g_prof[PROF_ROT] / 1000.0 / frames, g_prof[PROF_PROJ] / 1000.0 / frames);
+                fprintf(log, "  prof/frame ms: backdrop %.1f  sort %.1f  plane-total %.1f (shade %.1f fill %.1f => xform+cull %.1f)  [rot %.1f proj %.1f]\n", g_prof[PROF_BACK] / 1000.0 / frames, g_prof[PROF_SORT] / 1000.0 / frames, g_prof[PROF_PLANE] / 1000.0 / frames, g_prof[PROF_SHADE] / 1000.0 / frames, g_prof[PROF_FILL] / 1000.0 / frames, (g_prof[PROF_PLANE] - g_prof[PROF_SHADE] - g_prof[PROF_FILL]) / 1000.0 / frames, g_prof[PROF_ROT] / 1000.0 / frames, g_prof[PROF_PROJ] / 1000.0 / frames);
                 memset(g_prof, 0, sizeof g_prof);
 #endif
                 fflush(log); }

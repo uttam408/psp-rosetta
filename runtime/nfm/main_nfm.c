@@ -120,9 +120,13 @@ static int stage_main(int argc, char **argv)
             ctl.up = true; ctl.left = fr > 200 && fr < 230; ctl.wall = -1;
             mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
             if (fr % 20 == 0 || fr == drive_frames - 1)
-                printf("f%03d pos %6d %5d %6d xz %4d speed %7.2f clear %d hit %d\n", fr, ci->x, ci->y, ci->z, ci->xz, mad.speed, mad.clear, mad.hitmag);
+                printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d\n", fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag);
         }
-        camx = ci->x - (int)(m_sin(ci->xz) * 900); camz = ci->z - (int)(m_cos(ci->xz) * 900); yaw = ci->xz;
+        /* chase yaw. NFM_CAMYAW=cxz switches to Mad.cxz (the original's damped camera angle) for A/B;
+         * neither angle yet keeps the car locked on screen while turning -- see the drive trace above. */
+        const char *cy = getenv("NFM_CAMYAW");
+        int cyaw = (cy && strcmp(cy, "cxz") == 0) ? mad.cxz : ci->xz;
+        camx = ci->x - (int)(m_sin(cyaw) * 900); camz = ci->z - (int)(m_cos(cyaw) * 900); yaw = cyaw;
     }
     med.x = camx - med.cx; med.z = camz; med.y = -height; med.xz = yaw; med.zy = pitch;
 
