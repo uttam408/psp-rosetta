@@ -17,10 +17,11 @@ typedef struct { uint32_t c; int16_t x, y, z, pad; } GV;   /* GU_COLOR_8888 | GU
 #define LIST_WORDS 32768   /* must match the display list array in main_nfm_psp.c */
 #define CMD_WORDS 6         /* worst case per DrawArray: vtype + base + vaddr + prim (+ slack) */
 #define LIST_CAP (LIST_WORDS - 256)
-/* The GE's 2D path only has 12-bit screen coordinates after the offset: with sceGuOffset(2048-240, 2048-136) a
- * pixel x is valid in -1808..2287 and y in -1912..2183.  Anything beyond wraps and smears horizontal streaks
- * across the frame, so polygons reaching past +-GE_LIM are clipped to the frame first. */
-#define GE_LIM 1500.f
+/* GU_TRANSFORM_2D is through mode: the GE takes raw screen coordinates (offset/viewport do not apply) and
+ * misrasterises anything negative or outside its framebuffer range, smearing streaks and stretched triangles
+ * across the frame.  So every polygon / outline that touches outside [0,w]x[0,h] is clipped to that rectangle
+ * on the CPU first; only geometry fully inside takes the fast path. */
+#define OUTSIDE(fx, fy) ((fx) < 0.f || (fx) > (float)g_w || (fy) < 0.f || (fy) > (float)g_h)
 
 #ifdef NFM_GESKIP2   /* profiling: do all the prep, skip the actual GE draw calls */
 #define DRAW(prim, n, base) ((void)0)
@@ -92,11 +93,11 @@ static int prep(const float *xy, int n, int *x, int *y)
     for (int i = 0; i < n; i++) {
         float px = xy[2 * i], py = xy[2 * i + 1];
         if (!(fabsf(px) < 1e7f) || !(fabsf(py) < 1e7f)) return 0;   /* NaN / inf */
-        if (px < -GE_LIM || px > GE_LIM || py < -GE_LIM || py > GE_LIM) need = 1;
+        if (OUTSIDE(px, py)) need = 1;
     }
     const float *p = xy;
     if (need) {
-        float lx = -2.f, hx = g_w + 2.f, ly = -2.f, hy = g_h + 2.f;
+        float lx = 0.f, hx = (float)g_w, ly = 0.f, hy = (float)g_h;
         n = clip_edge(xy, n, bufA, 0, lx, 1);   if (n < 3) return 0;
         n = clip_edge(bufA, n, bufB, 0, hx, 0); if (n < 3) return 0;
         n = clip_edge(bufB, n, bufA, 1, ly, 1); if (n < 3) return 0;
@@ -189,6 +190,33 @@ static void emit_outline(const int *x, const int *y, int n, uint32_t color)
     g_nv = k;
 }
 
+/* closed outline that crosses the frame edge: clip each segment to [0,w]x[0,h] (Liang-Barsky), draw as GU_LINES */
+static void emit_outline_clipped(const float *xy, int n, uint32_t color)
+{
+    if (g_nv + 2 * n > NV || g_cmd + CMD_WORDS > LIST_CAP) { g_ge_dropped++; return; }
+    uint32_t c = color | 0xFF000000u;
+    GV *base = &g_v[g_nv];
+    int k = g_nv;
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+        float x0 = xy[2 * j], y0 = xy[2 * j + 1], dx = xy[2 * i] - x0, dy = xy[2 * i + 1] - y0;
+        float t0 = 0.f, t1 = 1.f;
+        const float p[4] = { -dx, dx, -dy, dy };
+        const float q[4] = { x0, (float)g_w - x0, y0, (float)g_h - y0 };
+        int vis = 1;
+        for (int e = 0; e < 4 && vis; e++) {
+            if (p[e] == 0.f) { if (q[e] < 0.f) vis = 0; continue; }
+            float t = q[e] / p[e];
+            if (p[e] < 0.f) { if (t > t1) vis = 0; else if (t > t0) t0 = t; }
+            else            { if (t < t0) vis = 0; else if (t < t1) t1 = t; }
+        }
+        if (!vis) continue;
+        put(&k, c, (int)floorf(x0 + dx * t0 + 0.5f), (int)floorf(y0 + dy * t0 + 0.5f));
+        put(&k, c, (int)floorf(x0 + dx * t1 + 0.5f), (int)floorf(y0 + dy * t1 + 0.5f));
+    }
+    if (k - g_nv >= 2) { g_cmd += CMD_WORDS; DRAW(GU_LINES, k - g_nv, base); }
+    g_nv = k;
+}
+
 /* float entry points: clip/validate, then emit (used for the rare off-screen-heavy polygons) */
 void nfm_ge_poly(const float *xy, int n, uint32_t color)
 {
@@ -205,13 +233,15 @@ void nfm_ge_outline(const float *xy, int n, uint32_t color)
 #ifdef NFM_GESKIP
     return;
 #endif
-    int x[MAXV], y[MAXV];
+    int x[MAXV], y[MAXV], out = 0;
     if (n < 2 || n > MAXV - 8) return;
     for (int i = 0; i < n; i++) {
-        if (!(fabsf(xy[2 * i]) < GE_LIM) || !(fabsf(xy[2 * i + 1]) < GE_LIM)) return;   /* far off-screen outline: skip (int16 safety) */
-        x[i] = (int)floorf(xy[2 * i] + 0.5f); y[i] = (int)floorf(xy[2 * i + 1] + 0.5f);
+        float fx = xy[2 * i], fy = xy[2 * i + 1];
+        if (!(fabsf(fx) < 1e7f) || !(fabsf(fy) < 1e7f)) return;   /* NaN / inf */
+        out |= OUTSIDE(fx, fy);
+        x[i] = (int)floorf(fx + 0.5f); y[i] = (int)floorf(fy + 0.5f);
     }
-    emit_outline(x, y, n, color);
+    if (out) emit_outline_clipped(xy, n, color); else emit_outline(x, y, n, color);
 }
 
 /* integer entry points: medium.c already has integer native-space coordinates, so the common case (everything
@@ -226,7 +256,7 @@ void nfm_ge_poly_i(const int *xs, const int *ys, int n, float scale, uint32_t co
     if (n < 3 || n > MAXV - 8) return;
     for (int i = 0; i < n; i++) {
         float fx = xs[i] * scale, fy = ys[i] * scale;
-        far |= (fx > GE_LIM) | (fx < -GE_LIM) | (fy > GE_LIM) | (fy < -GE_LIM);
+        far |= OUTSIDE(fx, fy);
         x[i] = RND(fx); y[i] = RND(fy);
     }
     if (far) {
@@ -243,12 +273,18 @@ void nfm_ge_outline_i(const int *xs, const int *ys, int n, float scale, uint32_t
 #ifdef NFM_GESKIP
     return;
 #endif
-    int x[MAXV], y[MAXV];
+    int x[MAXV], y[MAXV], out = 0;
     if (n < 2 || n > MAXV - 8) return;
     for (int i = 0; i < n; i++) {
         float fx = xs[i] * scale, fy = ys[i] * scale;
-        if (fx > GE_LIM || fx < -GE_LIM || fy > GE_LIM || fy < -GE_LIM) return;   /* far off-screen outline: skip (GE range) */
+        out |= OUTSIDE(fx, fy);
         x[i] = RND(fx); y[i] = RND(fy);
+    }
+    if (out) {
+        float xy[MAXV * 2];
+        for (int i = 0; i < n; i++) { xy[2 * i] = xs[i] * scale; xy[2 * i + 1] = ys[i] * scale; }
+        emit_outline_clipped(xy, n, color);
+        return;
     }
     emit_outline(x, y, n, color);
 }
