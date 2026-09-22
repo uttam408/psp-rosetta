@@ -388,12 +388,15 @@ int main(void)
         g_polys_in = g_polys_drawn = 0;
         unsigned long long t_a = sceKernelGetSystemTimeWide();
         if (first) step("before first scene_draw (nai=%d)", nai);
-        if (first && trace_on) { { FILE *z = fopen("nfm_trace.txt", "w"); if (z) { for (int k = 0; k < 64; k++) fputc(' ', z); fclose(z); } } g_trace_f = fopen("nfm_trace.txt", "r+"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
+        /* crash-bisect: trace every scene_draw step of frame 1 to nfm_trace.txt (overwritten in place each
+         * call, so whatever's left after a crash is the last thing reached).  Was gated behind L-held-at-launch
+         * (trace_on); now unconditional on frame 1 so a hardware crash is diagnosable without extra user action. */
+        if (first) { { FILE *z = fopen("nfm_trace.txt", "w"); if (z) { for (int k = 0; k < 64; k++) fputc(' ', z); fclose(z); } } g_trace_f = fopen("nfm_trace.txt", "r+"); if (g_trace_f) g_nfm_trace = trace_marker; step("first draw (tracing to nfm_trace.txt)"); }
 #ifdef NFM_GEFILL
         if (g_nfm_gefill) nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
 #endif
         scene_draw(&med, &sc);
-        if (first && trace_on) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
+        if (first) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         if (first) step("after first scene_draw");
         unsigned long long t_b;
 #ifdef NFM_GEFILL
