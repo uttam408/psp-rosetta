@@ -155,7 +155,8 @@ int main(void)
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
     SceCtrlData p0; sceCtrlReadBufferPositive(&p0, 1);
     int fast = (p0.Buttons & PSP_CTRL_RTRIGGER) != 0;
-    int cpu_blit = (p0.Buttons & PSP_CTRL_SQUARE) != 0;   /* hold Square at launch: GE builds fall back to the CPU rasteriser + GE blit; GEFILL=0 builds use the CPU memcpy blit */
+    int cpu_blit = 1;   /* the GE fill path looks visibly wrong on real hardware; always use the CPU rasteriser + GE blit until that's fixed. hold Square at launch to go back to GE fill. */
+    if (p0.Buttons & PSP_CTRL_SQUARE) cpu_blit = 0;
 #ifdef NFM_FORCECPU   /* PPSSPP test of the Square-at-launch fallback */
     cpu_blit = 1;
 #endif
