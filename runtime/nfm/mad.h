@@ -11,7 +11,21 @@
 #include "medium.h"
 #include "gen/cardefs.h"
 
-typedef struct { bool left, right, up, down, handb, zyinv; int wall; } Control;
+/* Control.java's state: the input flags Mad reads plus everything preform() (the CPU driver) keeps between ticks */
+typedef struct {
+    bool left, right, up, down, handb, zyinv;
+    int wall;
+    int lookback, chatup, multion;
+    bool enter, exit, arrace, mutem, mutes, radar;
+    int pan, attack, acr, trfix, runbul, acuracy, upwait, clrnce, rampp, turntyp, saftey, stuntf, hold, lwall, stcnt, statusque;
+    int turncnt, randtcnt, upcnt, trickfase, swat, lrdirect, uddirect, lrstart, udstart, oxy, ozy, flycnt, actwait, cntrn;
+    int revstart, oupnt, wtz, wtx, frx, frz, frad, apunch, avoidnlev;
+    int fpnt[5];
+    bool afta, forget, bulistc, agressed, perfection, usebounce, lastl, wlastl, udcomp, lrcomp, udbare, lrbare;
+    bool onceu, onced, oncel, oncer, lrswt, udswt, gowait, exitattack;
+    float skiplev, aim, mustland, trickprf;
+    uint32_t rng;
+} Control;
 
 typedef struct { int *v; int length; } Sect;
 
@@ -28,6 +42,10 @@ typedef struct {
     int n, nsp, nlaps, haltall, fn, nfix, stage, pcs;
     int typ[MAD_MAXCP], x[MAD_MAXCP], y[MAD_MAXCP], z[MAD_MAXCP];
     int dested[8];
+    int pos[8], clear[8], onscreen[8], opx[8], opz[8], omxz[8];
+    float magperc[8];
+    bool special[5];
+    int wasted, pcleared, catchfin, postwo;
     int fx[MAD_MAXCP], fy[MAD_MAXCP], fz[MAD_MAXCP];
     bool roted[MAD_MAXCP];
 } CheckPoints;
@@ -106,6 +124,7 @@ void carobj_free(CarObj *o);
 #define MAD_MAXTRK 6700
 bool trackers_init(Trackers *T);                                        /* Trackers() */
 void trackers_add_piece(Trackers *T, const PMesh *pm, int x, int y, int z, int xz, bool decor);   /* ContO ctor's tracker copy */
+void trackers_add_bumproad(Trackers *T, const PMesh *pm, int x, int y, int z, int xz);   /* bumproad: sloped bump floors */
 void trackers_add_wall(Trackers *T, int x, int y, int z, int radx, int radz, int rady, int xy, int zy);   /* maxr/l/t/b bounding box (dam 167) */
 void trackers_divide(Trackers *T, int sx, int n, int sz, int n2);       /* devidetrackers */
 void trackers_free(Trackers *T);
@@ -116,5 +135,11 @@ int  mad_regy(Mad *M, int n, float n2, CarObj *o);
 int  mad_regx(Mad *M, int n, float n2, CarObj *o);
 int  mad_regz(Mad *M, int n, float n2, CarObj *o);
 void mad_colide(Mad *M, CarObj *o, Mad *mad, CarObj *o2);
+
+/* Control.java + CheckPoints.checkstat */
+void control_init(Control *C, uint32_t seed);
+void control_reset(Control *C, CheckPoints *cp, int n);
+void control_preform(Control *C, Mad *mad, CarObj *o, CheckPoints *cp, Trackers *T);
+void checkpoints_checkstat(CheckPoints *cp, Mad *mads, CarObj *objs, int n, int im);
 
 #endif

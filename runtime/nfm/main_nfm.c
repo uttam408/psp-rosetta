@@ -105,6 +105,14 @@ static int stage_main(int argc, char **argv)
             if (c) { c->wzy = spin; c->wxz = steer; }
         }
     static MadEnv env; static Mad mad; static CarObj co;
+    /* --race N: N-1 AI opponents alongside the driven car, full tick order per GameSparker.java:
+     * colide (all pairs) -> preform (AI input) -> drive (all cars) -> checkstat (standings). */
+    int nracers = 1;
+    for (int i = 3; i + 1 < argc; i++) if (strcmp(argv[i], "--race") == 0) nracers = atoi(argv[i + 1]);
+    if (nracers < 1) nracers = 1;
+    if (nracers > NFM_MAXRACERS) nracers = NFM_MAXRACERS;
+    static Mad ai_mad[NFM_MAXRACERS]; static CarObj ai_co[NFM_MAXRACERS]; static Control ai_ctl[NFM_MAXRACERS];
+    int nai = 0;
     bool driving = false; Inst *dci = NULL;
     if (drive_car) {
         int cn = -1;
@@ -112,7 +120,7 @@ static int stage_main(int argc, char **argv)
         char id[96]; snprintf(id, sizeof id, "mesh/car/%s", drive_car);
         int sx0 = 0, sz0 = -760, sxz0 = 0;
         if (getenv("NFM_CARPOS")) sscanf(getenv("NFM_CARPOS"), "%d,%d,%d", &sx0, &sz0, &sxz0);   /* start x,z,heading */
-        Inst *ci = cn < 0 ? NULL : scene_add_car(&sc, &med, id, sx0, sz0, sxz0, 0xc83232, 0x282828);
+        Inst *ci = cn < 0 ? NULL : scene_add_racer(&sc, &med, 0, id, sx0, sz0, sxz0, 0xc83232, 0x282828);
         if (!ci) { fprintf(stderr, "cannot drive car %s\n", drive_car); return 1; }
         Control ctl = { 0 };
         if (getenv("NFM_LISTTREES"))   /* solid-box (radx==radz) decor trackers: candidate obstacles to aim at */
@@ -127,15 +135,52 @@ static int stage_main(int argc, char **argv)
         driving = true; dci = ci;
         env.im = 0; carobj_init(&co, ci); mad_init(&mad, &env, 0); mad_reseto(&mad, cn, &co, &sc.cp);
         if (getenv("NFM_STEER_CAP")) mad.steer_cap = atoi(getenv("NFM_STEER_CAP"));   /* default: the original's 36 */
-        printf("trackers %d (%dx%d cells), checkpoints %d (nsp %d), laps %d\n", sc.trk.n, sc.trk.ncx + 1, sc.trk.ncz + 1, sc.cp.n, sc.cp.nsp, sc.cp.nlaps);
+        nai = nracers - 1;
+        for (int k = 0; k < nai; k++) {
+            int acn = (cn + 1 + k) % 16;   /* cycle to a different car model per opponent */
+            char aid[96]; snprintf(aid, sizeof aid, "mesh/car/%s", NFM_CARS[acn].mesh);
+            /* fan opponents out to the side of the player's start so they don't spawn stacked on top of it */
+            int ox = sx0 + (int)(m_cos(sxz0) * 220 * (k + 1)) * ((k % 2) ? 1 : -1);
+            int oz = sz0 - (int)(m_sin(sxz0) * 220 * (k + 1)) * ((k % 2) ? 1 : -1);
+            Inst *ai = scene_add_racer(&sc, &med, k + 1, aid, ox, oz, sxz0, 0x3232c8, 0x282828);
+            if (!ai) { nai = k; break; }
+            env.isbot[k + 1] = true;
+            carobj_init(&ai_co[k], ai);
+            mad_init(&ai_mad[k], &env, k + 1);
+            mad_reseto(&ai_mad[k], acn, &ai_co[k], &sc.cp);
+            control_init(&ai_ctl[k], 0x9e3779b9u * (uint32_t)(k + 1));
+            control_reset(&ai_ctl[k], &sc.cp, k + 1);
+        }
+        printf("trackers %d (%dx%d cells), checkpoints %d (nsp %d), laps %d, racers %d (%d AI)\n", sc.trk.n, sc.trk.ncx + 1, sc.trk.ncz + 1, sc.cp.n, sc.cp.nsp, sc.cp.nlaps, nai + 1, nai);
         for (int fr = 0; fr < drive_frames; fr++) {
             ctl.up = true; ctl.left = fr > 200 && fr < 230; ctl.wall = -1;
             if (steer_a >= 0) ctl.left = fr >= steer_a && fr < steer_b;   /* NFM_STEER=a,b: hold left over frames [a,b) */
             if (hb_a >= 0) ctl.handb = fr >= hb_a && fr < hb_b;            /* NFM_HANDB=a,b: hold handbrake (starts air control) */
             if (up_a >= 0) ctl.up = !(fr >= up_a && fr < up_b);            /* NFM_LIFT=a,b: release gas over [a,b) */
+            /* GameSparker.java order: colide all pairs -> AI preform -> drive all cars -> checkstat */
+            for (int j = 0; j <= nai; j++)
+                for (int k = j + 1; k <= nai; k++) {
+                    Mad *mj = j == 0 ? &mad : &ai_mad[j - 1]; CarObj *oj = j == 0 ? &co : &ai_co[j - 1];
+                    Mad *mk = k == 0 ? &mad : &ai_mad[k - 1]; CarObj *ok = k == 0 ? &co : &ai_co[k - 1];
+                    mad_colide(mj, oj, mk, ok);
+                }
+            for (int k = 0; k < nai; k++) control_preform(&ai_ctl[k], &ai_mad[k], &ai_co[k], &sc.cp, &sc.trk);
             mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
-            if (fr % 20 == 0 || fr == drive_frames - 1 || (trace_from >= 0 && fr >= trace_from))
-                printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d\n", fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag);
+            for (int k = 0; k < nai; k++) mad_drive(&ai_mad[k], &ai_ctl[k], &ai_co[k], &sc.trk, &sc.cp);
+            {
+                static Mad *stat_mads[NFM_MAXRACERS]; static CarObj *stat_objs[NFM_MAXRACERS];
+                stat_mads[0] = &mad; stat_objs[0] = &co;
+                for (int k = 0; k < nai; k++) { stat_mads[k + 1] = &ai_mad[k]; stat_objs[k + 1] = &ai_co[k]; }
+                static Mad mflat[NFM_MAXRACERS]; static CarObj oflat[NFM_MAXRACERS];
+                for (int k = 0; k <= nai; k++) { mflat[k] = *stat_mads[k]; oflat[k] = *stat_objs[k]; }
+                checkpoints_checkstat(&sc.cp, mflat, oflat, nai + 1, 0);
+            }
+            if (fr % 20 == 0 || fr == drive_frames - 1 || (trace_from >= 0 && fr >= trace_from)) {
+                printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d",
+                       fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag);
+                if (nai) { printf(" | standing %d/%d", sc.cp.pos[0] + 1, nai + 1); }
+                printf("\n");
+            }
         }
         /* chase camera. The car travels along (-sin xz, cos xz) but the view looks along (sin yaw, cos yaw),
          * so the camera sits at +sin/-cos of the car and uses yaw = -xz to stay behind it.

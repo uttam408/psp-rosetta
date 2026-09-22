@@ -120,6 +120,36 @@ void trackers_add_piece(Trackers *T, const PMesh *pm, int x, int y, int z, int x
     }
 }
 
+/* bumproad's mesh undulates (70 high over 560 long, ~7 degrees, crests at z = 0 and +-1120..1190, troughs at +-560 and
+ * +-1680) but the shipped trackers are flat, so the car drove straight through the bumps.  Rebuild the centre strip
+ * (x +-840) as six sloped floors, one per half-wave, the same construction offbump uses (zy < 0 rises toward +z);
+ * the flat end strips are trimmed to start where the bumps end. */
+void trackers_add_bumproad(Trackers *T, const PMesh *pm, int x, int y, int z, int xz) {
+    static const int cz[6] = { -1400, -840, -280, 280, 840, 1400 };
+    static const int zy[6] = { -7, 7, -7, 7, -7, 7 };
+    PmTrack t[16];
+    int n = 0;
+    if (pm->ntracks > 8) { trackers_add_piece(T, pm, x, y, z, xz, false); return; }
+    for (int k = 0; k < pm->ntracks; ++k) {
+        PmTrack c = pm->tracks[k];
+        if (c.z == 0 && c.x == 0 && c.radz == 1960) continue;                    /* flat centre strip: replaced */
+        if (c.x == 0 && (c.z == 2240 || c.z == -2240)) {                          /* flat ends: 1400..3080 -> 1680..3080 */
+            c.z = c.z > 0 ? 2380 : -2380;
+            c.radz = 700;
+        }
+        t[n++] = c;
+    }
+    for (int i = 0; i < 6; ++i) {
+        PmTrack c = { 0 };
+        c.zy = zy[i]; c.radx = 840; c.rady = 60; c.radz = 280; c.y = -35; c.z = cz[i]; c.skid = 3; c.dam = 1;
+        t[n++] = c;
+    }
+    PMesh one = *pm;
+    one.tracks = t;
+    one.ntracks = n;
+    trackers_add_piece(T, &one, x, y, z, xz, false);
+}
+
 void trackers_add_wall(Trackers *T, int x, int y, int z, int radx, int radz, int rady, int xy, int zy) {
     if (T->n >= MAD_MAXTRK) return;
     int i = T->n++;

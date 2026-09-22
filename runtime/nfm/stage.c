@@ -107,7 +107,7 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
         else if (s->objs[i].op >= ST_MAXR) nwall += (uint32_t)(s->objs[i].a[0] > 0 ? s->objs[i].a[0] : 0);
     }
     sc->piles = calloc(npile ? npile : 1, sizeof(PMesh));
-    sc->inst = calloc(s->nobjs + nwall + 1, sizeof(Inst));
+    sc->inst = calloc(s->nobjs + nwall + 1 + NFM_MAXRACERS, sizeof(Inst));
     for (uint32_t i = 0; i < s->nobjs; i++) {
         const StObj *o = &s->objs[i];
         if (o->op == ST_PILE) {
@@ -115,6 +115,7 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
             pile_build(pm, m, o->a[0], o->a[1], o->a[2]);
             inst_init(&sc->inst[sc->n], m, pm, o->a[3], 250, o->a[4], 0, -1, -1);
             sc->inst[sc->n++].noline = true;
+            if (phys) pile_add_trackers(&sc->trk, m, o->a[0], o->a[1], o->a[2], o->a[3], 250, o->a[4]);
             continue;
         }
         if (o->op >= ST_MAXR) {
@@ -148,7 +149,8 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
         sc->inst[sc->n++].always = o->op == ST_CHK;
         if (phys) {
             CheckPoints *cp = &sc->cp;
-            trackers_add_piece(&sc->trk, &sc->meshes[pi], x, y, z, rot, (sc->meshes[pi].flags & PMF_DECOR) != 0);
+            if (!strcmp(NPIECE_NAMES[pi], "bumproad")) trackers_add_bumproad(&sc->trk, &sc->meshes[pi], x, y, z, rot);
+            else trackers_add_piece(&sc->trk, &sc->meshes[pi], x, y, z, rot, (sc->meshes[pi].flags & PMF_DECOR) != 0);
             if (o->op == ST_CHK && cp->n < MAD_MAXCP) {
                 cp->x[cp->n] = x; cp->z[cp->n] = z; cp->y[cp->n] = y;
                 cp->typ[cp->n] = rot == 0 ? 1 : 2;
@@ -178,9 +180,24 @@ Inst *scene_add_car(Scene *sc, Medium *m, const char *id, int x, int z, int xz, 
     return o;
 }
 
+Inst *scene_add_racer(Scene *sc, Medium *m, int slot, const char *id, int x, int z, int xz, int32_t p1, int32_t p2)
+{
+    if (slot < 0 || slot >= NFM_MAXRACERS) return NULL;
+    const PakAsset *a = pak_find(id);
+    if (!a || !pmesh_load(&sc->racer_src[slot], a->data, a->size)) { fprintf(stderr, "no car mesh %s\n", id); return NULL; }
+    if (!car_mesh_build(&sc->racer[slot], &sc->racer_src[slot])) return NULL;
+    Inst *o = &sc->inst[sc->n++];
+    inst_init(o, m, &sc->racer[slot], x, 250 - sc->racer[slot].grat, z, xz, p1, p2);
+    sc->racer_inst[slot] = o;
+    if (slot + 1 > sc->nracers) sc->nracers = slot + 1;
+    return o;
+}
+
 void scene_free(Scene *sc)
 {
     if (sc->car_inst) { pmesh_free(&sc->car); pmesh_free(&sc->car_src); }
+    for (int i = 0; i < sc->nracers; i++)
+        if (sc->racer_inst[i]) { pmesh_free(&sc->racer[i]); pmesh_free(&sc->racer_src[i]); }
     for (uint32_t i = 0; i < sc->n; i++) inst_free(&sc->inst[i]);
     for (uint32_t i = 0; i < sc->npiles; i++) pile_free(&sc->piles[i]);
     if (sc->meshes) for (int i = 0; i < NPIECE_COUNT; i++) pmesh_free(&sc->meshes[i]);

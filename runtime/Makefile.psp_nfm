@@ -5,7 +5,7 @@
 # switching between this and Makefile.psp.
 
 TARGET = nfm_view_psp
-OBJS = nfm/pmesh.o nfm/wheels.o nfm/mad.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/ge_fill.o platform/psp/main_nfm_psp.o
+OBJS = nfm/pmesh.o nfm/wheels.o nfm/mad.o nfm/control.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/ge_fill.o platform/psp/main_nfm_psp.o
 
 INCDIR   = src .
 # GE polygon fill (default); `make GEFILL=0` builds the CPU rasteriser + GE blit for A/B timing
