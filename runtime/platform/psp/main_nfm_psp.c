@@ -62,7 +62,7 @@ static void trace_marker(const char *tag, int a, int b)
 {
     static unsigned n;
     unsigned i = n++;
-    if (i >= 64 && i % 32 != 0) return;   /* full resolution for the first 64 calls, throttled after */
+    if (i >= 128 && i % 32 != 0) return;   /* full resolution for the first 128 calls, throttled after */
     fseek(g_trace_f, 0, SEEK_SET);
     fprintf(g_trace_f, "%-14s %6d %6d  (call #%u)\n", tag, a, b, i);
     fflush(g_trace_f);

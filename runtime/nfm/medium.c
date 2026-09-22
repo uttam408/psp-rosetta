@@ -791,19 +791,24 @@ static int oxs(const Medium *m, int x, int cz) { return m_xs(m, x, cz); }
 /* ContO.d */
 void inst_draw(Medium *m, Inst *o)
 {
+    NFM_TRACE("id enter", (int)(uintptr_t)o->mesh, (int)o->mesh->npolys);
     const PMesh *mesh = o->mesh;
     const int maxR = (int)mesh->max_r;
     const int disline = mesh->disline ? mesh->disline : 14;
+    NFM_TRACE("id disline", disline, maxR);
     const bool decor = (mesh->flags & PMF_DECOR) != 0;
     const bool shadow = (mesh->flags & PMF_SHADOW) != 0;
     float sxz = m_sin(m->xz), cxz_ = m_cos(m->xz);
     float szy = m_sin(m->zy), czy_ = m_cos(m->zy);
+    NFM_TRACE("id trig", m->xz, m->zy);
 
     o->dist = 0;
     int n  = m->cx + jint((o->x - m->x - m->cx) * cxz_ - (o->z - m->z - m->cz) * sxz);
     int n2 = m->cz + jint((o->x - m->x - m->cx) * sxz + (o->z - m->z - m->cz) * cxz_);
     int n3 = m->cz + jint((o->y - m->y - m->cy) * szy + (n2 - m->cz) * czy_);
+    NFM_TRACE("id n123", n, n3);
     int n4 = oxs(m, n + maxR, n3) - oxs(m, n - maxR, n3);
+    NFM_TRACE("id n4", n4, mesh->disp);
     if (oxs(m, n + maxR * 2, n3) > m->iw && oxs(m, n - maxR * 2, n3) < m->w && n3 > -maxR &&
         (n3 < (int)((int64_t)m->fade[disline] * m->far_pct / 100) + maxR || m->trk != 0 || o->always) && (n4 > mesh->disp || m->trk != 0 || o->always) && !(decor && false)) {
         int n8 = m->cy + jint((o->y - m->y - m->cy) * czy_ - (n2 - m->cz) * szy);
