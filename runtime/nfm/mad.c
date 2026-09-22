@@ -26,6 +26,7 @@ void mad_init(Mad *M, MadEnv *env, int im) {
     M->focus = -1;
     M->power = 75.0f;
     M->fixes = -1;
+    M->steer_cap = MAD_STEER_ORIG;
     M->rng = 0x9e3779b9u ^ (uint32_t)(im * 2654435761u);
 }
 
@@ -79,8 +80,25 @@ bool trackers_init(Trackers *T) {
     return T->x && T->y && T->z && T->xy && T->zy && T->skd && T->dam && T->radx && T->radz && T->rady && T->notwall && T->decor;
 }
 
+/* Trees and cacti carry four thin wall trackers (zy=+-90 slabs ~54x402, xy=+-90 slabs ~402x54, a "+").  Only the
+ * car's corner points are tested, and a wall pushes a point along its face, so a corner caught in a thin arm slides
+ * along it and the car scoots round the trunk.  Each slab of those pieces is widened to a TREE_HALF square so all
+ * four walls close into a solid pillar; the +-90 wall orientation is kept, since the wall branches key off it. */
+#define TREE_HALF 110
+static bool is_plus_slabs(const PMesh *pm) {
+    if (pm->ntracks != 4) return false;
+    for (int k = 0; k < 4; ++k) {
+        const PmTrack *t = &pm->tracks[k];
+        int lo = t->radx < t->radz ? t->radx : t->radz, hi = t->radx < t->radz ? t->radz : t->radx;
+        bool wall = (abs(t->xy) == 90) != (abs(t->zy) == 90);
+        if (!wall || t->x || t->z || lo > 60 || hi < 150) return false;
+    }
+    return true;
+}
+
 void trackers_add_piece(Trackers *T, const PMesh *pm, int x, int y, int z, int xz, bool decor) {
     int n = xz;
+    bool veg = decor && is_plus_slabs(pm);
     for (int k = 0; k < pm->ntracks && T->n < MAD_MAXTRK; ++k) {
         const PmTrack *t = &pm->tracks[k];
         int i = T->n++;
@@ -98,6 +116,7 @@ void trackers_add_piece(Trackers *T, const PMesh *pm, int x, int y, int z, int x
         T->radx[i] = (int)fabsf(t->radx * m_cos(a) + t->radz * m_sin(a));
         T->radz[i] = (int)fabsf(t->radx * m_sin(a) + t->radz * m_cos(a));
         T->rady[i] = t->rady;
+        if (veg) T->radx[i] = T->radz[i] = TREE_HALF;
     }
 }
 
@@ -148,4 +167,24 @@ void trackers_free(Trackers *T) {
     memset(T, 0, sizeof *T);
 }
 
+#define mad_drive mad_drive_raw
 #include "gen/mad_gen.inc"
+#undef mad_drive
+
+/* mad_drive: the generated physics plus one assist -- Mad.steer_cap limits the wheel steer angle (the original
+ * allows +-36, which is very twitchy at speed on a d-pad/stick).  The physics ramps wxz by `turn` per tick and
+ * uses the result immediately, so the ramp is pre-limited to land exactly on the cap. */
+void mad_drive(Mad *M, Control *ctl, CarObj *o, Trackers *T, CheckPoints *cp) {
+    int cap = M->steer_cap;
+    if (cap < MAD_STEER_ORIG) {
+        int lim = cap - M->cd[M->cn].turn;
+        if (lim < 0) lim = 0;
+        if (ctl->left && o->in->wxz > lim) o->in->wxz = lim;
+        if (ctl->right && o->in->wxz < -lim) o->in->wxz = -lim;
+    }
+    mad_drive_raw(M, ctl, o, T, cp);
+    if (cap < MAD_STEER_ORIG) {
+        if (o->in->wxz > cap) o->in->wxz = cap;
+        if (o->in->wxz < -cap) o->in->wxz = -cap;
+    }
+}

@@ -206,7 +206,8 @@ int main(void)
 #define NFM_TINY_NEAR 3
 #endif
 #ifndef NFM_LOD
-#define NFM_LOD 150   /* mesh LOD: skip polys whose estimated projected area is under NFM_LOD% of the tiny threshold's area; 0 = off */
+#define NFM_STEER_CAP 22   /* max wheel steer angle for the player's car (original: 36); analog stick scales 12..22 */
+#define NFM_LOD 150  /* mesh LOD: skip polys whose estimated projected area is under NFM_LOD% of the tiny threshold's area; 0 = off */
 #endif
 #ifdef NFM_EXACT_DEFAULT
     bool fastxf = false;
@@ -306,6 +307,11 @@ int main(void)
             Control ctl = { .left = (b & PSP_CTRL_LEFT) || ax < -40, .right = (b & PSP_CTRL_RIGHT) || ax > 40,
                             .up = (b & PSP_CTRL_UP) || ay < -40, .down = (b & PSP_CTRL_DOWN) || ay > 40,
                             .handb = (b & PSP_CTRL_CROSS) != 0, .zyinv = false, .wall = -1 };
+            {   /* d-pad steers to the full cap; the stick steers proportionally so a gentle push turns gently */
+                int mag = ax < 0 ? -ax : ax;
+                bool dpad = (b & (PSP_CTRL_LEFT | PSP_CTRL_RIGHT)) != 0;
+                mad.steer_cap = (dpad || mag < 40) ? NFM_STEER_CAP : 12 + (NFM_STEER_CAP - 12) * (mag - 40) / 87;
+            }
             unsigned long long tn = sceKernelGetSystemTimeWide();
             for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) {
                 unsigned long long tp = sceKernelGetSystemTimeWide();

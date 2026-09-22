@@ -91,7 +91,11 @@ typedef struct Mad {
     bool nofocus;
     int rpdcatch, newedcar, fixes, shakedam, outshakedam;
     bool colidim;
+    /* driving assist layered over the generated physics by mad_drive's wrapper (see mad.c) */
+    int steer_cap;                 /* max |wheel steer angle|; 36 is the original's limit */
 } Mad;
+
+#define MAD_STEER_ORIG 36
 
 void mad_init(Mad *M, MadEnv *env, int im);
 float mad_rand(Mad *M);            /* replaces Math.random(): deterministic per car */

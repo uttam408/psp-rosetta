@@ -110,16 +110,31 @@ static int stage_main(int argc, char **argv)
         int cn = -1;
         for (int k = 0; k < 16; k++) if (strcmp(NFM_CARS[k].mesh, drive_car) == 0) cn = k;
         char id[96]; snprintf(id, sizeof id, "mesh/car/%s", drive_car);
-        Inst *ci = cn < 0 ? NULL : scene_add_car(&sc, &med, id, 0, -760, 0, 0xc83232, 0x282828);
+        int sx0 = 0, sz0 = -760, sxz0 = 0;
+        if (getenv("NFM_CARPOS")) sscanf(getenv("NFM_CARPOS"), "%d,%d,%d", &sx0, &sz0, &sxz0);   /* start x,z,heading */
+        Inst *ci = cn < 0 ? NULL : scene_add_car(&sc, &med, id, sx0, sz0, sxz0, 0xc83232, 0x282828);
         if (!ci) { fprintf(stderr, "cannot drive car %s\n", drive_car); return 1; }
         Control ctl = { 0 };
+        if (getenv("NFM_LISTTREES"))   /* solid-box (radx==radz) decor trackers: candidate obstacles to aim at */
+            for (int k = 0, shown = 0; k < sc.trk.n && shown < 12; k++)
+                if (sc.trk.decor[k] && sc.trk.radx[k] == sc.trk.radz[k]) { printf("tree tracker %d at %d,%d rad %d\n", k, sc.trk.x[k], sc.trk.z[k], sc.trk.radx[k]); shown++; }
+        int steer_a = -1, steer_b = -1, trace_from = -1;
+        if (getenv("NFM_STEER")) sscanf(getenv("NFM_STEER"), "%d,%d", &steer_a, &steer_b);
+        int hb_a = -1, hb_b = -1, up_a = -1, up_b = -1;
+        if (getenv("NFM_HANDB")) sscanf(getenv("NFM_HANDB"), "%d,%d", &hb_a, &hb_b);
+        if (getenv("NFM_LIFT")) sscanf(getenv("NFM_LIFT"), "%d,%d", &up_a, &up_b);
+        if (getenv("NFM_TRACE_FROM")) trace_from = atoi(getenv("NFM_TRACE_FROM"));   /* print every frame from here on */
         driving = true; dci = ci;
         env.im = 0; carobj_init(&co, ci); mad_init(&mad, &env, 0); mad_reseto(&mad, cn, &co, &sc.cp);
+        if (getenv("NFM_STEER_CAP")) mad.steer_cap = atoi(getenv("NFM_STEER_CAP"));   /* default: the original's 36 */
         printf("trackers %d (%dx%d cells), checkpoints %d (nsp %d), laps %d\n", sc.trk.n, sc.trk.ncx + 1, sc.trk.ncz + 1, sc.cp.n, sc.cp.nsp, sc.cp.nlaps);
         for (int fr = 0; fr < drive_frames; fr++) {
             ctl.up = true; ctl.left = fr > 200 && fr < 230; ctl.wall = -1;
+            if (steer_a >= 0) ctl.left = fr >= steer_a && fr < steer_b;   /* NFM_STEER=a,b: hold left over frames [a,b) */
+            if (hb_a >= 0) ctl.handb = fr >= hb_a && fr < hb_b;            /* NFM_HANDB=a,b: hold handbrake (starts air control) */
+            if (up_a >= 0) ctl.up = !(fr >= up_a && fr < up_b);            /* NFM_LIFT=a,b: release gas over [a,b) */
             mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
-            if (fr % 20 == 0 || fr == drive_frames - 1)
+            if (fr % 20 == 0 || fr == drive_frames - 1 || (trace_from >= 0 && fr >= trace_from))
                 printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d\n", fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag);
         }
         /* chase camera. The car travels along (-sin xz, cos xz) but the view looks along (sin yaw, cos yaw),
