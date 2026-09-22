@@ -84,6 +84,11 @@ typedef struct {
     float *deltaf, *projf;
     uint8_t *typ;
     int *vc;                     /* per unique vertex, this frame: x, pitched y, pitched z, screen x, screen y (fastxf only) */
+    /* optional per-polygon vertex-position override: dmg_ox[pi] is NULL or npolys[pi]->nverts ints (and likewise
+     * oy/oz), replacing that polygon's mesh->verts lookup wholesale. NULL (the default) = draw the shared mesh
+     * verts unmodified. Cars point this at CarObj's own per-poly vertex copy (mad.c), which mad_gen.inc's crash
+     * response bends on impact -- this is what turns that bending into visible damage. */
+    const int * const *dmg_ox, * const *dmg_oy, * const *dmg_oz;
 } Inst;
 
 /* paint1/paint2: 0xRRGGBB or -1 to keep the model's own */

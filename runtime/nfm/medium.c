@@ -547,8 +547,16 @@ static void plane_draw(Medium *m, Inst *o, uint32_t pi, int n, int n2, int n3, i
     int ax[MAXN], az[MAXN], ay[MAXN];
     int pay[MAXN], paz[MAXN];
     const bool rotated = cxy != 0 || czy != 0 || cxz != 0;
+    PmVert pv_store[MAXN];
     const PmVert *pv[MAXN];
-    for (int i = 0; i < N; i++) pv[i] = &mesh->verts[mesh->indices[P->first_index + i]];
+    const int *dox = o->dmg_ox ? o->dmg_ox[pi] : NULL;
+    const int *doy = dox ? o->dmg_oy[pi] : NULL;
+    const int *doz = dox ? o->dmg_oz[pi] : NULL;
+    if (dox) {
+        for (int i = 0; i < N; i++) { pv_store[i] = (PmVert){ (float)dox[i], (float)doy[i], (float)doz[i] }; pv[i] = &pv_store[i]; }
+    } else {
+        for (int i = 0; i < N; i++) pv[i] = &mesh->verts[mesh->indices[P->first_index + i]];
+    }
     bool b = noline;
     const int gr0 = P->gr, fs = P->fs, light = P->light;
     const bool solo = P->no_outline != 0;

@@ -45,7 +45,8 @@ bool carobj_init(CarObj *o, Inst *in) {
     o->npl = (int)pm->npolys;
     o->p = calloc(o->npl, sizeof(MadPoly));
     o->vbuf = malloc(sizeof(int) * 3 * pm->nindices);
-    if (!o->p || !o->vbuf) { carobj_free(o); return false; }
+    o->poxp = malloc(sizeof(int *) * o->npl); o->poyp = malloc(sizeof(int *) * o->npl); o->pozp = malloc(sizeof(int *) * o->npl);
+    if (!o->p || !o->vbuf || !o->poxp || !o->poyp || !o->pozp) { carobj_free(o); return false; }
     for (int k = 0; k < o->npl; ++k) {
         const PmPoly *pp = &pm->polys[k];
         MadPoly *d = &o->p[k];
@@ -61,13 +62,18 @@ bool carobj_init(CarObj *o, Inst *in) {
             const PmVert *pv = &pm->verts[pm->indices[pp->first_index + v]];
             d->ox[v] = (int)pv->x; d->oy[v] = (int)pv->y; d->oz[v] = (int)pv->z;
         }
+        o->poxp[k] = d->ox; o->poyp[k] = d->oy; o->pozp[k] = d->oz;
     }
+    /* wire the render side straight to this car's own vertex copy, so mad_gen.inc's crash-response bending
+     * (mad_distruct et al, which writes p[].ox/oy/oz) shows up on screen with no further plumbing needed. */
+    in->dmg_ox = (const int * const *)o->poxp; in->dmg_oy = (const int * const *)o->poyp; in->dmg_oz = (const int * const *)o->pozp;
     return true;
 }
 
 void carobj_free(CarObj *o) {
-    free(o->p); free(o->vbuf);
-    o->p = NULL; o->vbuf = NULL;
+    if (o->in) { o->in->dmg_ox = o->in->dmg_oy = o->in->dmg_oz = NULL; }
+    free(o->p); free(o->vbuf); free(o->poxp); free(o->poyp); free(o->pozp);
+    o->p = NULL; o->vbuf = NULL; o->poxp = NULL; o->poyp = NULL; o->pozp = NULL;
 }
 
 bool trackers_init(Trackers *T) {

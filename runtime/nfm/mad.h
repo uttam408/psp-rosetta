@@ -66,6 +66,8 @@ typedef struct {
     bool fix;
     MadPoly *p;
     int *vbuf;                     /* backing store for p[].ox/oy/oz */
+    int **poxp, **poyp, **pozp;    /* per-poly pointers into p[].ox/oy/oz, wired into in->dmg_o{x,y,z} so
+                                     * whatever mad_gen.inc's crash response bends actually gets drawn */
 } CarObj;
 
 /* what Mad reads/writes of xtGraphics / Medium / Record */
