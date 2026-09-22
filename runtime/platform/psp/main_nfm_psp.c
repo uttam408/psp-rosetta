@@ -337,24 +337,31 @@ int main(void)
                 mad.steer_cap = (dpad || mag < 40) ? NFM_STEER_CAP : 12 + (NFM_STEER_CAP - 12) * (mag - 40) / 87;
             }
             unsigned long long tn = sceKernelGetSystemTimeWide();
+            static bool tick1_traced = false;   /* bisect a hardware crash: mark each stage of the first physics tick only, so this doesn't spam the memstick every frame */
             for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) {
+                bool trc = nai && !tick1_traced;
                 unsigned long long tp = sceKernelGetSystemTimeWide();
                 /* GameSparker.java order: colide all pairs -> AI preform -> drive all cars */
+                if (trc) step("tick1: colide start (nai=%d)", nai);
                 for (int j = 0; j <= nai; j++)
                     for (int k = j + 1; k <= nai; k++) {
                         Mad *mj = j == 0 ? &mad : &ai_mad[j - 1]; CarObj *oj = j == 0 ? &co : &ai_co[j - 1];
                         Mad *mk = k == 0 ? &mad : &ai_mad[k - 1]; CarObj *ok = k == 0 ? &co : &ai_co[k - 1];
                         mad_colide(mj, oj, mk, ok);
                     }
+                if (trc) step("tick1: colide done, preform start");
                 for (int k = 0; k < nai; k++) control_preform(&ai_ctl[k], &ai_mad[k], &ai_co[k], &sc.cp, &sc.trk);
+                if (trc) step("tick1: preform done, drive start");
                 mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
                 for (int k = 0; k < nai; k++) mad_drive(&ai_mad[k], &ai_ctl[k], &ai_co[k], &sc.trk, &sc.cp);
+                if (trc) step("tick1: drive done, checkstat start");
                 if (nai) {
                     static Mad smad[NFM_MAXRACERS]; static CarObj sco[NFM_MAXRACERS];
                     smad[0] = mad; sco[0] = co;
                     for (int k = 0; k < nai; k++) { smad[k + 1] = ai_mad[k]; sco[k + 1] = ai_co[k]; }
                     checkpoints_checkstat(&sc.cp, smad, sco, nai + 1, 0);
                 }
+                if (trc) { step("tick1: checkstat done"); tick1_traced = true; }
                 unsigned long long dp = sceKernelGetSystemTimeWide() - tp;
                 acc_phys += dp; nphys++; if (dp > max_phys) max_phys = dp;
             }
