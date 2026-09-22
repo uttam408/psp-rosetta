@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PAK_MAX_ASSETS 256
+#define PAK_MAX_ASSETS 512   /* NFM has ~375; overflow is reported below, never silent */
 
 static uint8_t   *g_buf;
 static size_t     g_len;
@@ -68,6 +68,9 @@ static void parse_index(void)
         a->data = toc_find(a->id, &a->size);
         g_nassets++;
     }
+    if (g_nassets < (int)count)
+        fprintf(stderr, "pak: index has %u assets, only first %d loaded (raise PAK_MAX_ASSETS)\n",
+                count, g_nassets);
 }
 
 bool pak_open(const char *path)

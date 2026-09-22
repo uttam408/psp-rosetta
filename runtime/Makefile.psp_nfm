@@ -1,0 +1,30 @@
+# NFM stage viewer -> EBOOT.PBP  (needs pspdev: export PSPDEV=~/pspdev; PATH=$PSPDEV/bin:$PATH)
+#   make -f Makefile.psp_nfm
+# copy build/nfm/assets.pak next to EBOOT.PBP (ms0:/PSP/GAME/NFMVIEW/).
+# Object files live in the source tree; use a separate checkout or `make clean` when
+# switching between this and Makefile.psp.
+
+TARGET = nfm_view_psp
+OBJS = nfm/pmesh.o nfm/wheels.o nfm/mad.o nfm/control.o nfm/medium.o nfm/stage.o nfm/pile.o src/pak.o platform/psp/ge_fill.o platform/psp/main_nfm_psp.o
+
+INCDIR   = src .
+# GE polygon fill (default); `make GEFILL=0` builds the CPU rasteriser + GE blit for A/B timing
+GEFILL ?= 1
+ifeq ($(GEFILL),1)
+GEDEF = -DNFM_GEFILL
+endif
+CFLAGS   = $(XCFLAGS) $(GEDEF) -DNFM_ABGR -O2 -G0 -Wall -std=c11 -Wno-unused-parameter -ffp-contract=off -fwrapv -MMD -MP
+ASFLAGS  = $(CFLAGS)
+LIBS     = -lpspgum -lpspgu -lm -lpspctrl -lpspdisplay -lpspge -lpspdebug -lpsppower
+
+EXTRA_TARGETS   = EBOOT.PBP
+PSP_EBOOT_TITLE = Need for Madness
+# XMB art: python3 tools/nfm_art.py <need-for-madness-source> build/nfm/art (skipped when absent)
+ifneq ($(wildcard ../build/nfm/art/ICON0.PNG),)
+PSP_EBOOT_ICON = ../build/nfm/art/ICON0.PNG
+PSP_EBOOT_PIC1 = ../build/nfm/art/PIC1.PNG
+endif
+
+PSPSDK = $(shell psp-config --pspsdk-path)
+include $(PSPSDK)/lib/build.mak
+-include $(OBJS:.o=.d)
