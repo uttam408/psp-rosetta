@@ -239,7 +239,7 @@ int main(void)
     static MadEnv menv; static Mad mad; static CarObj co;
     bool driving = false; Inst *dci = NULL;
 #ifndef NFM_RACE_N
-#define NFM_RACE_N 3   /* -DNFM_RACE_N=N: player + (N-1) AI opponents; 1 = no AI (original single-car behaviour) */
+#define NFM_RACE_N 6   /* -DNFM_RACE_N=N: player + (N-1) AI opponents; 1 = no AI (original single-car behaviour); 6 = max (NFM_MAXRACERS) */
 #endif
     static Mad ai_mad[NFM_MAXRACERS]; static CarObj ai_co[NFM_MAXRACERS]; static Control ai_ctl[NFM_MAXRACERS];
     int nai = 0;   /* set once the player car is placed, below */

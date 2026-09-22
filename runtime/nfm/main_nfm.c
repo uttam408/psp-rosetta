@@ -72,7 +72,7 @@ static int stage_main(int argc, char **argv)
 
     int camx = 0, camz = 0, yaw = 0, pitch = 10, height = 300;
     if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
-    bool shot = false, bench = false;
+    bool shot = false, bench = false, headless = false;
     const char *out = NULL;
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) {
@@ -81,6 +81,7 @@ static int stage_main(int argc, char **argv)
             for (int k = 0; k < 5 && i + 1 < argc && (isdigit((unsigned char)argv[i + 1][0]) || (argv[i + 1][0] == '-' && isdigit((unsigned char)argv[i + 1][1]))); k++)
                 *v[k] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--bench") == 0) bench = true;
+        else if (strcmp(argv[i], "--headless") == 0) headless = true;   /* --drive/--race: print the trace and exit, skip the interactive SDL window */
     }
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "--fast") == 0) med.fastxf = true;   /* float-composed transform */
@@ -209,6 +210,8 @@ static int stage_main(int argc, char **argv)
         }
         return 0;
     }
+
+    if (headless) return 0;   /* batch --drive/--race run: the frame-loop trace above is all the caller wants */
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) return 1;
     SDL_Window *win = SDL_CreateWindow("nfm_view", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W * 2, H * 2, 0);
