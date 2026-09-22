@@ -51,12 +51,19 @@ static void step(const char *fmt, ...)
     va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
     fputc('\n', f); fclose(f);
 }
-/* overwrite one fixed-size marker per call; after a crash it names the last thing started */
+/* overwrite one fixed-size marker per call; after a crash it names roughly the last thing started.
+ * NFM_TRACE fires per-polygon (thousands of calls for a full frame), and each fseek+fprintf+fflush
+ * is a real, synchronous memstick write (tens of ms on hardware) -- calling this every time made
+ * frame 1 look hung/crashed for minutes rather than actually faulting.  Only write every 32nd call
+ * (so most polys are skipped) but always remember the most recent tag, so a real crash is still
+ * findable to within ~32 calls without the write storm. */
 static FILE *g_trace_f;
 static void trace_marker(const char *tag, int a, int b)
 {
+    static unsigned n;
+    if (n++ % 32 != 0) return;
     fseek(g_trace_f, 0, SEEK_SET);
-    fprintf(g_trace_f, "%-14s %6d %6d\n", tag, a, b);
+    fprintf(g_trace_f, "%-14s %6d %6d  (call #%u)\n", tag, a, b, n - 1);
     fflush(g_trace_f);
 }
 
