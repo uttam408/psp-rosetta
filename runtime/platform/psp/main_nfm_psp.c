@@ -229,6 +229,11 @@ int main(void)
     static Stage st; static Scene sc; static Medium med;
     static MadEnv menv; static Mad mad; static CarObj co;
     bool driving = false; Inst *dci = NULL;
+#ifndef NFM_RACE_N
+#define NFM_RACE_N 3   /* -DNFM_RACE_N=N: player + (N-1) AI opponents; 1 = no AI (original single-car behaviour) */
+#endif
+    static Mad ai_mad[NFM_MAXRACERS]; static CarObj ai_co[NFM_MAXRACERS]; static Control ai_ctl[NFM_MAXRACERS];
+    int nai = 0;   /* set once the player car is placed, below */
     unsigned long long tphys = 0;
     bool loaded = false, reload = false;
     int car_i = 12;   /* NFM_CARS index; 12 = audir8 */
@@ -240,7 +245,10 @@ int main(void)
     while (g_running) {
         if (!loaded || want || reload) {
             reload = false;
-            if (loaded) { if (driving) carobj_free(&co); driving = false; dci = NULL; scene_free(&sc); stage_free(&st); }
+            if (loaded) {
+                if (driving) { carobj_free(&co); for (int k = 0; k < nai; k++) carobj_free(&ai_co[k]); }
+                driving = false; dci = NULL; nai = 0; scene_free(&sc); stage_free(&st);
+            }
             stage_i = (stage_i + want + g_nstages) % g_nstages; want = 0;
             char id[112];
             snprintf(id, sizeof id, "%s.pstg", g_names[stage_i]);
@@ -261,13 +269,29 @@ int main(void)
             step("scene built: %u pieces", (unsigned)sc.n);
             char cid[64];
             snprintf(cid, sizeof cid, "mesh/car/%s", NFM_CARS[car_i].mesh);
-            dci = scene_add_car(&sc, &med, cid, 0, -760, 0, 0xc83232, 0x282828);
+            dci = scene_add_racer(&sc, &med, 0, cid, 0, -760, 0, 0xc83232, 0x282828);
             if (dci && carobj_init(&co, dci)) {
                 memset(&menv, 0, sizeof menv);
                 mad_init(&mad, &menv, 0);
                 mad_reseto(&mad, car_i, &co, &sc.cp);
                 driving = true; tphys = sceKernelGetSystemTimeWide();
                 step("car %s ready: %d trackers, %d checkpoints", NFM_CARS[car_i].mesh, sc.trk.n, sc.cp.n);
+                int want_ai = NFM_RACE_N - 1;
+                if (want_ai > NFM_MAXRACERS - 1) want_ai = NFM_MAXRACERS - 1;
+                for (int k = 0; k < want_ai; k++) {
+                    int acn = (car_i + 1 + k) % 16;
+                    char aid[64]; snprintf(aid, sizeof aid, "mesh/car/%s", NFM_CARS[acn].mesh);
+                    int ox = (k % 2 ? 220 : -220) * (k / 2 + 1), oz = -760 - 180 * (k + 1);
+                    Inst *ai = scene_add_racer(&sc, &med, k + 1, aid, ox, oz, 0, 0x3232c8, 0x282828);
+                    if (!ai || !carobj_init(&ai_co[k], ai)) break;
+                    menv.isbot[k + 1] = true;
+                    mad_init(&ai_mad[k], &menv, k + 1);
+                    mad_reseto(&ai_mad[k], acn, &ai_co[k], &sc.cp);
+                    control_init(&ai_ctl[k], 0x9e3779b9u * (uint32_t)(k + 1) + (uint32_t)stage_i);
+                    control_reset(&ai_ctl[k], &sc.cp, k + 1);
+                    nai = k + 1;
+                }
+                step("%d AI opponent(s) ready", nai);
             }
             int camx = 0, camz = 0;
             if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
@@ -315,7 +339,22 @@ int main(void)
             unsigned long long tn = sceKernelGetSystemTimeWide();
             for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) {
                 unsigned long long tp = sceKernelGetSystemTimeWide();
+                /* GameSparker.java order: colide all pairs -> AI preform -> drive all cars */
+                for (int j = 0; j <= nai; j++)
+                    for (int k = j + 1; k <= nai; k++) {
+                        Mad *mj = j == 0 ? &mad : &ai_mad[j - 1]; CarObj *oj = j == 0 ? &co : &ai_co[j - 1];
+                        Mad *mk = k == 0 ? &mad : &ai_mad[k - 1]; CarObj *ok = k == 0 ? &co : &ai_co[k - 1];
+                        mad_colide(mj, oj, mk, ok);
+                    }
+                for (int k = 0; k < nai; k++) control_preform(&ai_ctl[k], &ai_mad[k], &ai_co[k], &sc.cp, &sc.trk);
                 mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
+                for (int k = 0; k < nai; k++) mad_drive(&ai_mad[k], &ai_ctl[k], &ai_co[k], &sc.trk, &sc.cp);
+                if (nai) {
+                    static Mad smad[NFM_MAXRACERS]; static CarObj sco[NFM_MAXRACERS];
+                    smad[0] = mad; sco[0] = co;
+                    for (int k = 0; k < nai; k++) { smad[k + 1] = ai_mad[k]; sco[k + 1] = ai_co[k]; }
+                    checkpoints_checkstat(&sc.cp, smad, sco, nai + 1, 0);
+                }
                 unsigned long long dp = sceKernelGetSystemTimeWide() - tp;
                 acc_phys += dp; nphys++; if (dp > max_phys) max_phys = dp;
             }
@@ -379,6 +418,7 @@ int main(void)
             if (driving) {
                 pspDebugScreenSetXY(0, 1);
                 pspDebugScreenPrintf("%-14s speed %3d  cp %d  hit %d ", NFM_CARS[car_i].name, (int)mad.speed, mad.env->checkpoint, mad.hitmag);
+                if (nai) { pspDebugScreenSetXY(0, 2); pspDebugScreenPrintf("pos %d/%d  lap %d/%d ", sc.cp.pos[0] + 1, nai + 1, sc.cp.pcleared / (sc.cp.n ? sc.cp.n : 1) + 1, sc.cp.nlaps); }
             }
         }
         sceDisplayWaitVblankStart();
