@@ -418,7 +418,12 @@ int main(void)
             if (driving) {
                 pspDebugScreenSetXY(0, 1);
                 pspDebugScreenPrintf("%-14s speed %3d  cp %d  hit %d ", NFM_CARS[car_i].name, (int)mad.speed, mad.env->checkpoint, mad.hitmag);
-                if (nai) { pspDebugScreenSetXY(0, 2); pspDebugScreenPrintf("pos %d/%d  lap %d/%d ", sc.cp.pos[0] + 1, nai + 1, sc.cp.pcleared / (sc.cp.n ? sc.cp.n : 1) + 1, sc.cp.nlaps); }
+                if (nai) {
+                    int lap = mad.nlaps < sc.cp.nlaps ? mad.nlaps + 1 : sc.cp.nlaps;
+                    pspDebugScreenSetXY(0, 2);
+                    if (menv.lastcheck && mad.nlaps >= sc.cp.nlaps) pspDebugScreenPrintf("FINISHED  pos %d/%d ", sc.cp.pos[0] + 1, nai + 1);
+                    else pspDebugScreenPrintf("pos %d/%d  lap %d/%d ", sc.cp.pos[0] + 1, nai + 1, lap, sc.cp.nlaps);
+                }
             }
         }
         sceDisplayWaitVblankStart();

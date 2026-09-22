@@ -178,8 +178,9 @@ static int stage_main(int argc, char **argv)
             if (fr % 20 == 0 || fr == drive_frames - 1 || (trace_from >= 0 && fr >= trace_from)) {
                 printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d",
                        fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag);
-                if (nai) { printf(" | standing %d/%d", sc.cp.pos[0] + 1, nai + 1); }
-                printf("\n");
+                if (nai) printf(" | standing %d/%d", sc.cp.pos[0] + 1, nai + 1);
+                printf(" | lap %d/%d%s\n", mad.nlaps < sc.cp.nlaps ? mad.nlaps + 1 : sc.cp.nlaps, sc.cp.nlaps,
+                       (env.lastcheck && mad.nlaps >= sc.cp.nlaps) ? " FINISHED" : "");
             }
         }
         /* chase camera. The car travels along (-sin xz, cos xz) but the view looks along (sin yaw, cos yaw),
