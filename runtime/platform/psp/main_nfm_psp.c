@@ -356,7 +356,11 @@ int main(void)
                     for (int k = j + 1; k <= nai; k++) {
                         Mad *mj = j == 0 ? &mad : &ai_mad[j - 1]; CarObj *oj = j == 0 ? &co : &ai_co[j - 1];
                         Mad *mk = k == 0 ? &mad : &ai_mad[k - 1]; CarObj *ok = k == 0 ? &co : &ai_co[k - 1];
+                        /* mad_colide only pushes back when the FIRST car it's given dominates the second
+                         * (its push logic gates on M->dominate[]); call it both ways per pair, or whichever
+                         * car has the lower index never gets to react when the higher one actually wins. */
                         mad_colide(mj, oj, mk, ok);
+                        mad_colide(mk, ok, mj, oj);
                     }
                 if (trc) step("tick1: colide done, preform start");
                 for (int k = 0; k < nai; k++) control_preform(&ai_ctl[k], &ai_mad[k], &ai_co[k], &sc.cp, &sc.trk);

@@ -163,7 +163,11 @@ static int stage_main(int argc, char **argv)
                 for (int k = j + 1; k <= nai; k++) {
                     Mad *mj = j == 0 ? &mad : &ai_mad[j - 1]; CarObj *oj = j == 0 ? &co : &ai_co[j - 1];
                     Mad *mk = k == 0 ? &mad : &ai_mad[k - 1]; CarObj *ok = k == 0 ? &co : &ai_co[k - 1];
+                    /* mad_colide only pushes back when the FIRST car it's given dominates the second
+                     * (its push logic gates on M->dominate[]); call it both ways per pair, or whichever
+                     * car has the lower index never gets to react when the higher one actually wins. */
                     mad_colide(mj, oj, mk, ok);
+                    mad_colide(mk, ok, mj, oj);
                 }
             for (int k = 0; k < nai; k++) control_preform(&ai_ctl[k], &ai_mad[k], &ai_co[k], &sc.cp, &sc.trk);
             mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
@@ -177,8 +181,9 @@ static int stage_main(int argc, char **argv)
                 checkpoints_checkstat(&sc.cp, mflat, oflat, nai + 1, 0);
             }
             if (fr % 20 == 0 || fr == drive_frames - 1 || (trace_from >= 0 && fr >= trace_from)) {
-                printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d",
-                       fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag);
+                printf("f%03d pos %6d %5d %6d xz %4d xy %4d zy %4d | mxz %4d cxz %4d | speed %7.2f clear %d hit %d | loop %d caps %d wtouch %d",
+                       fr, ci->x, ci->y, ci->z, ci->xz, ci->xy, ci->zy, mad.mxz, mad.cxz, mad.speed, mad.clear, mad.hitmag,
+                       mad.loop, mad.capsized, mad.wtouch);
                 if (nai) printf(" | standing %d/%d", sc.cp.pos[0] + 1, nai + 1);
                 printf(" | lap %d/%d%s\n", mad.nlaps < sc.cp.nlaps ? mad.nlaps + 1 : sc.cp.nlaps, sc.cp.nlaps,
                        (env.lastcheck && mad.nlaps >= sc.cp.nlaps) ? " FINISHED" : "");
