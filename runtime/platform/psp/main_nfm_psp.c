@@ -13,18 +13,42 @@
 #include <pspgu.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
 
 #include "../../src/pak.h"
 #include "../../nfm/medium.h"
 #include "../../nfm/stage.h"
+#include "nfm_audio_psp.h"
+
+/* stage N (1-based) -> its tracker module in the pak (the original's per-stage soundtrack) */
+static const char *const g_stage_music[33] = { NULL,
+    "stage1", "stage2", "stage3", "stage4", "stage5", "stage6", "stage7", "stage8", "stage9", "stage10",
+    "ufo_tune_nfmmix", "ascender_-_overscan_nfmmix", "ability_nfmmix", "einstein_-_music_nfmmix", "warez_by_night_nfmmix",
+    "gina_nfmmix", "uprising_nfmmix", "k7_game_nfmmix", "adrenochrome_nfmmix", "fleshbrain-sauron_nfmmix",
+    "hiredguns_static-05_nfmmix", "winds_nfmmix", "popcorn-12_nfmmix", "ultrabass_nfmmix", "ektoplasmomatic_nfmmix",
+    "shadowrun_nfmmix", "stage27", "the_logic", "jensz", "quake", "love", "roz_shuffle" };
 
 PSP_MODULE_INFO("NFM Viewer", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(-1024);
 
 #define W 480
+#ifndef NFM_TICK_US
+#define NFM_TICK_US 66666   /* physics step: 33333 = the original's 30 Hz; 66666 = half game speed (default). Cars are pose-interpolated between steps. */
+#endif
+typedef struct { int x, y, z, xz, xy, zy; } Pose;
+static Pose pose_of(const Inst *i) { return (Pose){ i->x, i->y, i->z, i->xz, i->xy, i->zy }; }
+static void pose_set(Inst *i, Pose p) { i->x = p.x; i->y = p.y; i->z = p.z; i->xz = p.xz; i->xy = p.xy; i->zy = p.zy; }
+static int lerp_i(int a, int b, float t) { return a + (int)((b - a) * t); }
+static int lerp_ang(int a, int b, float t) { int d = (((b - a) % 360) + 540) % 360 - 180; return a + (int)(d * t); }
+static Pose pose_lerp(Pose a, Pose b, float t)
+{
+    int dx = b.x - a.x, dz = b.z - a.z;
+    if (dx > 4000 || dx < -4000 || dz > 4000 || dz < -4000) return b;   /* teleport (reset/fix point): don't smear */
+    return (Pose){ lerp_i(a.x, b.x, t), lerp_i(a.y, b.y, t), lerp_i(a.z, b.z, t), lerp_ang(a.xz, b.xz, t), lerp_ang(a.xy, b.xy, t), lerp_ang(a.zy, b.zy, t) };
+}
 #define H 270
 #define STRIDE 512
 #ifndef NFM_LOWRES_DEFAULT
@@ -186,6 +210,8 @@ int main(void)
         return 0;
     }
     step("pak opened: %d assets, free mem %u", pak_count(), (unsigned)sceKernelTotalFreeMemSize());
+    step("audio init: %d", nfm_audio_init());
+    int music_stage = -1;
     for (int i = 0; i < pak_count() && g_nstages < 64; i++) {
         const char *id = pak_at(i)->id;
         if (strncmp(id, "data/stage/", 11) == 0) {
@@ -244,6 +270,8 @@ int main(void)
     static Mad ai_mad[NFM_MAXRACERS]; static CarObj ai_co[NFM_MAXRACERS]; static Control ai_ctl[NFM_MAXRACERS];
     int nai = 0;   /* set once the player car is placed, below */
     unsigned long long tphys = 0;
+    static Pose pose_prev[NFM_MAXRACERS], pose_real[NFM_MAXRACERS];
+    bool pose_valid = false; int nlerp = 0; Inst *lin[NFM_MAXRACERS];
     bool loaded = false, reload = false;
     int car_i = 12;   /* NFM_CARS index; 12 = audir8 */
     int first = 1;
@@ -259,6 +287,16 @@ int main(void)
                 driving = false; dci = NULL; nai = 0; scene_free(&sc); stage_free(&st);
             }
             stage_i = (stage_i + want + g_nstages) % g_nstages; want = 0;
+            {   /* per-stage soundtrack; a car change reloads the same stage and keeps the track playing */
+                int sn = atoi(g_names[stage_i] + 11);
+                if (sn != music_stage) {
+                    music_stage = sn;
+                    char mid[96]; const PakAsset *ma = NULL;
+                    if (sn >= 1 && sn <= 32) { snprintf(mid, sizeof mid, "data/music/%s", g_stage_music[sn]); ma = pak_find(mid); }
+                    step("music stage %d: %s", sn, ma ? "play" : "none");
+                    nfm_music_play(ma ? ma->data : NULL, ma ? ma->size : 0);
+                }
+            }
             char id[112];
             snprintf(id, sizeof id, "%s.pstg", g_names[stage_i]);
             const PakAsset *a = pak_find(g_names[stage_i]);
@@ -283,7 +321,7 @@ int main(void)
                 memset(&menv, 0, sizeof menv);
                 mad_init(&mad, &menv, 0);
                 mad_reseto(&mad, car_i, &co, &sc.cp);
-                driving = true; tphys = sceKernelGetSystemTimeWide();
+                driving = true; pose_valid = false; tphys = sceKernelGetSystemTimeWide();
                 step("car %s ready: %d trackers, %d checkpoints", NFM_CARS[car_i].mesh, sc.trk.n, sc.cp.n);
                 int want_ai = NFM_RACE_N - 1;
                 if (want_ai > NFM_MAXRACERS - 1) want_ai = NFM_MAXRACERS - 1;
@@ -347,7 +385,10 @@ int main(void)
             }
             unsigned long long tn = sceKernelGetSystemTimeWide();
             static bool tick1_traced = false;   /* bisect a hardware crash: mark each stage of the first physics tick only, so this doesn't spam the memstick every frame */
-            for (int n = 0; tn - tphys >= 33333 && n < 3; n++, tphys += 33333) {
+            lin[0] = co.in; for (int k = 0; k < nai; k++) lin[k + 1] = ai_co[k].in;
+            for (int n = 0; tn - tphys >= NFM_TICK_US && n < 3; n++, tphys += NFM_TICK_US) {
+                for (int k = 0; k <= nai; k++) pose_prev[k] = pose_of(lin[k]);
+                pose_valid = true;
                 bool trc = nai && !tick1_traced;
                 unsigned long long tp = sceKernelGetSystemTimeWide();
                 /* GameSparker.java order: colide all pairs -> AI preform -> drive all cars */
@@ -378,7 +419,12 @@ int main(void)
                 unsigned long long dp = sceKernelGetSystemTimeWide() - tp;
                 acc_phys += dp; nphys++; if (dp > max_phys) max_phys = dp;
             }
-            if (tn - tphys >= 33333) tphys = tn;
+            if (tn - tphys >= NFM_TICK_US) tphys = tn;
+            if (pose_valid) {
+                float al = (float)(tn - tphys) / (float)NFM_TICK_US; if (al > 1.0f) al = 1.0f;
+                nlerp = nai + 1;
+                for (int k = 0; k < nlerp; k++) { pose_real[k] = pose_of(lin[k]); pose_set(lin[k], pose_lerp(pose_prev[k], pose_real[k], al)); }
+            }
             /* chase the original's lagged camera angle (Mad.cxz trails the travel direction), not the car's own
              * heading, so the car swings across the view through a turn.  cxz can leave 0..360 while unwinding. */
             int cyaw = ((mad.cxz % 360) + 360) % 360;
@@ -409,6 +455,8 @@ int main(void)
         if (g_nfm_gefill) nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
 #endif
         scene_draw(&med, &sc);
+        for (int k = 0; k < nlerp; k++) pose_set(lin[k], pose_real[k]);
+        nlerp = 0;
         if (first) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         if (first) step("after first scene_draw");
         unsigned long long t_b;
