@@ -309,6 +309,9 @@ int main(void)
                 if (driving) { carobj_free(&co); for (int k = 0; k < nai; k++) carobj_free(&ai_co[k]); }
                 driving = false; dci = NULL; nai = 0; scene_free(&sc); stage_free(&st);
             }
+#ifndef NFM_PICKSKIP
+            if (want) picking = true;   /* the picker comes up before each stage */
+#endif
             stage_i = (stage_i + want + g_nstages) % g_nstages; want = 0;
             {   /* per-stage soundtrack; a car change reloads the same stage and keeps the track playing */
                 int sn = atoi(g_names[stage_i] + 11);
@@ -408,6 +411,8 @@ int main(void)
             Control ctl = { .left = (b & PSP_CTRL_LEFT) || ax < -40, .right = (b & PSP_CTRL_RIGHT) || ax > 40,
                             .up = (b & PSP_CTRL_UP) || ay < -40, .down = (b & PSP_CTRL_DOWN) || ay > 40,
                             .handb = (b & PSP_CTRL_CROSS) != 0, .zyinv = false, .wall = -1 };
+            /* the original only enters its air-control "loop" state on a handbrake press while airborne; arrows in flight start it too so they roll straight away */
+            if (!mad.wtouch && !mad.mtouch && (ctl.left || ctl.right)) ctl.handb = true;
             {   /* d-pad steers to the full cap; the stick steers proportionally so a gentle push turns gently */
                 int mag = ax < 0 ? -ax : ax;
                 bool dpad = (b & (PSP_CTRL_LEFT | PSP_CTRL_RIGHT)) != 0;
