@@ -219,13 +219,14 @@ int main(void)
     }
     step("pak opened: %d assets, free mem %u", pak_count(), (unsigned)sceKernelTotalFreeMemSize());
     step("audio init: %d", nfm_audio_init());
-    static HudTex h_dmg, h_pow, h_lap, h_pos, h_ord[3], h_cd[4], h_fin, h_wasted;
+    static HudTex h_dmg, h_pow, h_lap, h_pos, h_ord[3], h_cd[4], h_fin, h_wasted, h_cars, h_selcar, h_back, h_next, h_statb, h_statbo;
     {
         int ok = hud_load(&h_dmg, "damage") + hud_load(&h_pow, "power") + hud_load(&h_lap, "lap") + hud_load(&h_pos, "position")
                + hud_load(&h_ord[0], "1") + hud_load(&h_ord[1], "2") + hud_load(&h_ord[2], "3")
                + hud_load(&h_cd[0], "0c") + hud_load(&h_cd[1], "1c") + hud_load(&h_cd[2], "2c") + hud_load(&h_cd[3], "3c")
                + hud_load(&h_fin, "gamefinished") + hud_load(&h_wasted, "yourwasted");
-        step("hud textures: %d/13", ok);
+        ok += hud_load(&h_cars, "cars") + hud_load(&h_selcar, "selectcar") + hud_load(&h_back, "back") + hud_load(&h_next, "next") + hud_load(&h_statb, "statb") + hud_load(&h_statbo, "statbo");
+        step("hud textures: %d/19", ok);
     }
     int music_stage = -1;
     for (int i = 0; i < pak_count() && g_nstages < 64; i++) {
@@ -403,9 +404,11 @@ int main(void)
             if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
             if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
-            pick_ang = (pick_ang + 1) % 360;
-            med.x = dci->x + (int)(m_sin(pick_ang) * 750) - med.cx; med.z = dci->z - (int)(m_cos(pick_ang) * 750);
-            med.y = dci->y - 380; med.xz = (360 - pick_ang) % 360; med.zy = 10;
+            /* the original's carselect: the car turns on the spot 950 ahead of a level camera, over the showroom picture */
+            pick_ang = (pick_ang + 4) % 360;
+            dci->xz = pick_ang; dci->xy = 0; dci->zy = 0; dci->wzy -= 10; if (dci->wzy < -30) dci->wzy += 30;
+            med.x = dci->x - med.cx; med.z = dci->z - 950;
+            med.y = dci->y - 280; med.xz = 0; med.zy = 0;
         } else if (driving) {
             /* D-pad / analog: up = gas, down = brake, left/right = steer, Cross = handbrake; physics ticks at the original's 30 Hz */
             Control ctl = { .left = (b & PSP_CTRL_LEFT) || ax < -40, .right = (b & PSP_CTRL_RIGHT) || ax > 40,
@@ -507,6 +510,31 @@ int main(void)
 #ifdef NFM_GEFILL
         if (g_nfm_gefill) nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
 #endif
+        if (picking && driving && !g_nfm_gefill) {
+            hud_begin(g_px, f.w, f.h);
+            hud_clear(0x000000);
+            hud_stretch(&h_cars, f.w * 65 / 800.0f, f.h * 25 / 450.0f, f.w * 670 / 800.0f, f.h * 400 / 450.0f, 1.0f);
+            inst_draw(&med, dci);
+            hud_sprite(&h_selcar, (f.w - h_selcar.w) / 2.0f, 20, 1.0f);
+            hud_sprite(&h_back, 57, 165, 1.0f);
+            hud_sprite(&h_next, f.w - 57 - h_next.w, 165, 1.0f);
+            {   /* stat bars: the formulas of xtGraphics.carselect; gradient up to the value, outline over it */
+                const CarStats *cs = &NFM_CARS[car_i];
+                float v[6];
+                v[0] = (cs->swits[2] - 220) / 90.0f; if (v[0] < 0.2f) v[0] = 0.2f;
+                v[1] = cs->acelf[1] * cs->acelf[0] * cs->acelf[2] * cs->grip / 7700.0f;
+                v[2] = cs->dishandle;
+                v[3] = (cs->airc * cs->airs * cs->bounce + 28.0f) / 139.0f;
+                v[4] = (cs->moment + 0.5f) / 2.6f;
+                v[5] = cs->outdam;
+                for (int i = 0; i < 6; i++) {
+                    if (v[i] > 1.0f) v[i] = 1.0f;
+                    float bx = (i < 3 ? 162 : 536) * f.w / 800.0f, by = (337 + 15 * (i % 3)) * f.h / 450.0f, bw = 156 * f.w / 800.0f, bh = 7 * f.h / 450.0f;
+                    hud_stretch(&h_statb, bx, by, bw, bh, v[i]);
+                    hud_stretch(&h_statbo, bx, by, bw, bh, 1.0f);
+                }
+            }
+        } else
         scene_draw(&med, &sc);
         for (int k = 0; k < nlerp; k++) pose_set(lin[k], pose_real[k]);
         nlerp = 0;
@@ -535,7 +563,16 @@ int main(void)
                         float c = (float)cyaw_hud * 0.01745329252f;
                         float dx = (float)(sc.cp.x[ti] - dci->x), dz = (float)(sc.cp.z[ti] - dci->z);
                         float fwd = dx * -sinf(c) + dz * cosf(c), side = dx * cosf(c) + dz * sinf(c);
-                        hud_arrow(240.0f, 40.0f, atan2f(side, fwd) * 57.2957795f, 22.0f);
+                        /* xtGraphics.arrow: target angle clamped to +/-130, the drawn angle chases it at 10 deg per 30 Hz frame */
+                        static float ana; static unsigned long long ta;
+                        unsigned long long tq = sceKernelGetSystemTimeWide();
+                        float stp = ta ? 10.0f * (float)(tq - ta) / 33333.0f : 10.0f; ta = tq;
+                        float k = -atan2f(side, fwd) * 57.2957795f;
+                        if (k > 130) k = 130;
+                        if (k < -130) k = -130;
+                        if (fabsf(ana - k) < 180) { if (fabsf(ana - k) < stp) ana = k; else ana += ana < k ? stp : -stp; }
+                        else { ana += (k < 0 ? 1.5f : -1.5f) * stp; if (ana > 180) ana -= 360; if (ana < -180) ana += 360; }
+                        hud_arrow(ana, mad.missedcp, (frames & 4) != 0, g_px[3 * f.w + f.w / 2]);
                     }
                 }
                 if (nai) {
@@ -575,10 +612,22 @@ int main(void)
         acc_draw += t_b - t_a; acc_blit += t_c - t_b;
         if (picking) {
             pspDebugScreenSetOffset(cur * FBSZ);
-            pspDebugScreenSetXY(0, 1);
-            pspDebugScreenPrintf("<  %-16s %2d/16  >   ", NFM_CARS[car_i].name, car_i + 1);
-            pspDebugScreenSetXY(0, 2);
-            pspDebugScreenPrintf("LEFT/RIGHT pick car   X/START race   L/R stage ");
+            {   /* car name (flickers grey/white like the original), stat labels, hint */
+                static int flick;
+                flick ^= 1;
+                pspDebugScreenSetTextColor(flick ? 0xFFF0F0F0 : 0xFFB0B0B0);
+                pspDebugScreenSetXY((60 - (int)strlen(NFM_CARS[car_i].name)) / 2, 7);
+                pspDebugScreenPrintf("%s", NFM_CARS[car_i].name);
+                pspDebugScreenSetTextColor(0xFF2878B5);
+                static const char *const lab[6] = { "Top Speed:", "Acceleration:", "Handling:", "Stunts:", "Strength:", "Endurance:" };
+                for (int i = 0; i < 6; i++) {
+                    pspDebugScreenSetXY((i < 3 ? 20 : 39) - (int)strlen(lab[i]) - (i < 3 ? 8 : -1), 25 + (i % 3) * 1);
+                    pspDebugScreenPrintf("%s", lab[i]);
+                }
+                pspDebugScreenSetTextColor(0xFFFFFFFF);
+                pspDebugScreenSetXY(10, 31);
+                pspDebugScreenPrintf("LEFT/RIGHT car   X/START race   L/R stage");
+            }
         } else if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);

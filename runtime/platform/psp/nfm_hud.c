@@ -102,18 +102,68 @@ static void fill_poly(const float *xy, int n, uint32_t c)
     }
 }
 
-void hud_arrow(float cx, float cy, float ang_deg, float size)
+void hud_stretch(const HudTex *t, float x, float y, float w, float h, float frac)
 {
-    static const float P[7][2] = { {0, -1}, {0.8f, 0.05f}, {0.32f, 0.05f}, {0.32f, 0.9f}, {-0.32f, 0.9f}, {-0.32f, 0.05f}, {-0.8f, 0.05f} };
-    if (!g_fb) return;
-    float a = ang_deg * 0.01745329252f, sn = sinf(a), cs = cosf(a);
-    for (int pass = 0; pass < 2; pass++) {
-        float k = pass == 0 ? 1.0f : 0.76f, xy[14];
-        for (int i = 0; i < 7; i++) {
-            float lx = P[i][0] * size * k, ly = (P[i][1] - (pass == 0 ? 0.0f : 0.06f)) * size * k;
-            xy[2 * i] = cx + lx * cs - ly * sn;
-            xy[2 * i + 1] = cy + lx * sn + ly * cs;
+    if (!t || !t->px || !g_fb || w <= 0 || h <= 0) return;
+    int x0 = (int)x, y0 = (int)y, dw = (int)w, dh = (int)h, lim = (int)(w * frac);
+    for (int dy = 0; dy < dh; dy++) {
+        int py = y0 + dy;
+        if (py < 0 || py >= g_h) continue;
+        const uint32_t *row = t->px + (dy * t->h / dh) * t->w;
+        for (int dx = 0; dx < dw && dx < lim; dx++) {
+            int pxx = x0 + dx;
+            if (pxx < 0 || pxx >= g_w) continue;
+            uint32_t c = row[dx * t->w / dw];
+            if (c) g_fb[py * g_w + pxx] = c;
         }
-        fill_poly(xy, 7, pass == 0 ? abgr(16, 16, 16) : abgr(255, 216, 32));
     }
+}
+
+void hud_clear(uint32_t rgb) { for (int i = 0; i < g_w * g_h; i++) g_fb[i] = abgr((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255); }
+
+static void line(int x0, int y0, int x1, int y1, uint32_t c)
+{
+    int dx = abs(x1 - x0), dy = -abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy;
+    for (;;) {
+        if (x0 >= 0 && x0 < g_w && y0 >= 0 && y0 < g_h) g_fb[y0 * g_w + x0] = c;
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * e;
+        if (e2 >= dy) { e += dy; x0 += sx; }
+        if (e2 <= dx) { e += dx; y0 += sy; }
+    }
+}
+
+static int clamp255(int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+
+/* xtGraphics.arrow(): a flat 7-point arrow at world y = -90, z = 700 (+/-110), spun about its centre by `ana` degrees
+ * and perspective-projected (focus point 400) onto the 800x450 screen, here scaled to the framebuffer.  Fill is
+ * yellow-green, fading into the sky as it swings to point straight ahead (hidden within 7 degrees). */
+void hud_arrow(float ana, int missed, int flk, uint32_t sky)
+{
+    static const int PX[7] = { 400, 365, 385, 385, 415, 415, 435 }, PZ[7] = { 810, 750, 750, 650, 650, 750, 750 };
+    if (!g_fb) return;
+    int ab = (int)fabsf(ana);
+    if (ab <= 7 && missed <= 0 && missed != -2) return;
+    float a = ana * 0.01745329252f, sn = sinf(a), cs = cosf(a), sc = g_w / 800.0f, xy[14];
+    for (int i = 0; i < 7; i++) {
+        float dx = PX[i] - 400, dz = PZ[i] - 700;
+        float x = 400 + dx * cs - dz * sn, z = 700 + dx * sn + dz * cs;
+        if (z < 50) z = 50;
+        xy[2 * i] = ((z - 400) * (400 - x) / z + x) * sc;
+        xy[2 * i + 1] = ((z - 400) * (225 + 90) / z - 90) * sc;
+    }
+    int sr = sky & 255, sg = (sky >> 8) & 255, sb = (sky >> 16) & 255;
+    int fr = 190, fg = 255, fb_ = 0, or_ = 115, og = 170, ob = 0;
+    if (missed > 0) {
+        if (flk) { fr = 255; fg = 220; or_ = 255; og = 0; }
+    } else {
+        if (ab <= 45) {
+            fr = (fr * ab + sr * (45 - ab)) / 45; fg = (fg * ab + sg * (45 - ab)) / 45; fb_ = (fb_ * ab + sb * (45 - ab)) / 45;
+            or_ = (or_ * ab + sr * (45 - ab)) / 45; og = (og * ab + sg * (45 - ab)) / 45; ob = (ob * ab + sb * (45 - ab)) / 45;
+        }
+        if (ab >= 90) fr = clamp255((fr * (140 - ab) + 255 * (ab - 90)) / 50);
+    }
+    fill_poly(xy, 7, abgr(fr, fg, fb_));
+    uint32_t oc = abgr(or_, og, ob);
+    for (int i = 0; i < 7; i++) { int j = (i + 1) % 7; line((int)xy[2 * i], (int)xy[2 * i + 1], (int)xy[2 * j], (int)xy[2 * j + 1], oc); }
 }
