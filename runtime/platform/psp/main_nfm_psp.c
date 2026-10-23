@@ -408,8 +408,8 @@ int main(void)
         if (picking && driving && spick) {   /* stage select: the camera orbits the track; d-pad L/R browses stages, Cross/Start picks */
             if (edge & PSP_CTRL_RIGHT) want = 1;
             if (edge & PSP_CTRL_LEFT)  want = -1;
-            med.trk = 1;   /* the original's track view: no fog, no draw-distance cull */
-            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { spick = false; med.trk = 0; }
+            med.trk = 1; med.tinyfar = 0; med.lod = 0;   /* the original's track view: no fog, no distance, tiny-polygon or LOD cull */
+            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { spick = false; med.trk = 0; med.tinyfar = NFM_TINY_FAR; med.lod = lod; }
             if (sc.cp.n) {   /* Medium.aroundtrack: 17000 out, 5000 up, centre easing along the checkpoints */
                 sp_ang = (sp_ang + 1) % 360;
                 sp_x -= (sp_x - sc.cp.x[sp_ptr]) / 10; sp_z -= (sp_z - sc.cp.z[sp_ptr]) / 10;
@@ -570,7 +570,7 @@ int main(void)
         scene_draw(&med, &sc);
         if (picking && spick && driving && !g_nfm_gefill) {   /* stage-select overlay: title and back/next over the orbiting track */
             hud_begin(g_px, f.w, f.h);
-            hud_sprite(&h_select, 338 * f.w / 800.0f, 35 * f.h / 450.0f, 1.0f);
+            hud_sprite(&h_select, (f.w - h_select.w) / 2.0f, 35 * f.h / 450.0f, 1.0f);
             (b & PSP_CTRL_LEFT ? hud_sprite_lit : hud_sprite)(&h_back, 115 * f.w / 800.0f, 135 * f.h / 450.0f, 1.0f);
             (b & PSP_CTRL_RIGHT ? hud_sprite_lit : hud_sprite)(&h_next, f.w - 115 * f.w / 800.0f - h_next.w, 135 * f.h / 450.0f, 1.0f);
         }
@@ -654,13 +654,13 @@ int main(void)
             sflick ^= 1;
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetTextColor(sflick ? 0xFFF0F0F0 : 0xFFB0B0B0);
-            pspDebugScreenSetXY((60 - (int)strlen(st.name)) / 2, 9);
+            pspDebugScreenSetXY((68 - (int)strlen(st.name)) / 2, 9);
             pspDebugScreenPrintf("%s", st.name);
             pspDebugScreenSetTextColor(0xFF909090);
-            pspDebugScreenSetXY(26, 10);
+            pspDebugScreenSetXY(30, 10);
             pspDebugScreenPrintf("%d / %d", stage_i + 1, g_nstages);
             pspDebugScreenSetTextColor(0xFFFFFFFF);
-            pspDebugScreenSetXY(8, 31);
+            pspDebugScreenSetXY(9, 31);
             pspDebugScreenPrintf("LEFT/RIGHT stage   X/START choose car   L/R stage");
         } else if (picking) {
             pspDebugScreenSetOffset(cur * FBSZ);
@@ -668,7 +668,7 @@ int main(void)
                 static int flick;
                 flick ^= 1;
                 pspDebugScreenSetTextColor(flick ? 0xFFF0F0F0 : 0xFFB0B0B0);
-                pspDebugScreenSetXY((60 - (int)strlen(NFM_CARS[car_i].name)) / 2, 7);
+                pspDebugScreenSetXY((68 - (int)strlen(NFM_CARS[car_i].name)) / 2, 7);
                 pspDebugScreenPrintf("%s", NFM_CARS[car_i].name);
                 pspDebugScreenSetTextColor(0xFF2878B5);
                 static const char *const lab[6] = { "Top Speed:", "Acceleration:", "Handling:", "Stunts:", "Strength:", "Endurance:" };
@@ -677,10 +677,10 @@ int main(void)
                     pspDebugScreenPrintf("%s", lab[i]);
                 }
                 pspDebugScreenSetTextColor(0xFF909090);
-                pspDebugScreenSetXY(28, 8);
+                pspDebugScreenSetXY(29, 8);
                 pspDebugScreenPrintf("< %d / 16 >", car_i + 1);
                 pspDebugScreenSetTextColor(0xFFFFFFFF);
-                pspDebugScreenSetXY(10, 31);
+                pspDebugScreenSetXY(13, 31);
                 pspDebugScreenPrintf("LEFT/RIGHT car   X/START race   L/R stage");
             }
         } else if (overlay) {
