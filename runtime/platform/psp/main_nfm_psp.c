@@ -297,6 +297,7 @@ int main(void)
     bool picking = true; int pick_ang = 0;   /* car picker shown at launch */
 #endif
     int cyaw_hud = 0;
+    unsigned long long wasted_t0 = 0;   /* when the player's car was destroyed (0 = intact) */
     unsigned long long cd_t0 = 0; int cd_step = -1;   /* 3-2-1-GO countdown: cars hold for 3 s, GO shows to 4 s */
     int first = 1;
     Frame f = { lowres ? 400 : W, lowres ? 225 : H, g_px };
@@ -348,7 +349,7 @@ int main(void)
                 memset(&menv, 0, sizeof menv);
                 mad_init(&mad, &menv, 0);
                 mad_reseto(&mad, car_i, &co, &sc.cp);
-                driving = true; pose_valid = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1;
+                driving = true; wasted_t0 = 0; pose_valid = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1;
                 step("car %s ready: %d trackers, %d checkpoints", NFM_CARS[car_i].mesh, sc.trk.n, sc.cp.n);
                 int want_ai = NFM_RACE_N - 1;
                 if (want_ai > NFM_MAXRACERS - 1) want_ai = NFM_MAXRACERS - 1;
@@ -400,6 +401,8 @@ int main(void)
 #endif
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
         if (edge & PSP_CTRL_LTRIGGER) { lod = lod ? 0 : NFM_LOD; med.lod = lod; }   /* LOD on/off (A/B on device) */
+        if (driving && !picking && wasted_t0 && sceKernelGetSystemTimeWide() - wasted_t0 > 1500000 && (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)))
+            reload = true;   /* wasted: X/START retries the stage with a fresh, undamaged car */
         if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
             if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
@@ -415,7 +418,16 @@ int main(void)
                             .up = (b & PSP_CTRL_UP) || ay < -40, .down = (b & PSP_CTRL_DOWN) || ay > 40,
                             .handb = (b & PSP_CTRL_CROSS) != 0, .zyinv = false, .wall = -1 };
             /* the original only enters its air-control "loop" state on a handbrake press while airborne; arrows in flight start it too so they roll straight away */
-            if (!mad.wtouch && !mad.mtouch && (ctl.left || ctl.right)) ctl.handb = true;
+            {   /* one aerial trick at a time: whichever axis is touched first (roll = left/right, flip = up/down) owns the jump */
+                static int axis;
+                bool air = !mad.wtouch && !mad.mtouch, any = ctl.left || ctl.right || ctl.up || ctl.down;
+                if (!air || !any) axis = 0;
+                else {
+                    if (!axis) axis = (ctl.up || ctl.down) ? 2 : 1;
+                    if (axis == 1) ctl.up = ctl.down = false; else ctl.left = ctl.right = false;
+                    ctl.handb = true;
+                }
+            }
             {   /* d-pad steers to the full cap; the stick steers proportionally so a gentle push turns gently */
                 int mag = ax < 0 ? -ax : ax;
                 bool dpad = (b & (PSP_CTRL_LEFT | PSP_CTRL_RIGHT)) != 0;
@@ -452,7 +464,12 @@ int main(void)
                 for (int k = 0; k < nai; k++) mad_drive(&ai_mad[k], &ai_ctl[k], &ai_co[k], &sc.trk, &sc.cp);
                 {   /* sound cues off the player's physics state: checkpoint passed, new impact (hitmag is cumulative) */
                     static int s_cp = -1, s_hit = 0; static unsigned s_rng = 1;
-                    if (mad.hitmag < s_hit) s_hit = 0;                      /* reset on reload / repair */
+                    if (mad.hitmag < s_hit) {                               /* reset on reload / repair */
+                        if (mad.hitmag == 0 && cd_s >= 4) sfx("carfixed", 200);   /* a repair hoop, not a stage load */
+                        s_hit = 0;
+                    }
+                    if (mad.dest && !wasted_t0) { wasted_t0 = sceKernelGetSystemTimeWide(); sfx("wasted", 220); }
+                    else if (!mad.dest && wasted_t0) wasted_t0 = 0;        /* repaired in time */
                     int cpn = mad.env->checkpoint;
                     if (s_cp >= 0 && cpn != s_cp) sfx("checkpoint", 200);
                     s_cp = cpn;
@@ -582,6 +599,7 @@ int main(void)
                     hud_sprite(&h_lap, 8, 252, 1.0f);
                 }
                 if (done) hud_sprite(&h_fin, 240 - h_fin.w, 100, 2.0f);
+                if (wasted_t0) hud_sprite(&h_wasted, 240 - h_wasted.w, 90, 2.0f);
                 int cs = (int)((sceKernelGetSystemTimeWide() - cd_t0) / 1000000ull);
                 if (cs <= 3) { const HudTex *ct = &h_cd[cs == 3 ? 0 : 3 - cs]; hud_sprite(ct, 240.0f - ct->w, 100.0f, 2.0f); }
             }
@@ -624,6 +642,9 @@ int main(void)
                     pspDebugScreenSetXY((i < 3 ? 20 : 39) - (int)strlen(lab[i]) - (i < 3 ? 8 : -1), 25 + (i % 3) * 1);
                     pspDebugScreenPrintf("%s", lab[i]);
                 }
+                pspDebugScreenSetTextColor(0xFF909090);
+                pspDebugScreenSetXY(28, 8);
+                pspDebugScreenPrintf("< %d / 16 >", car_i + 1);
                 pspDebugScreenSetTextColor(0xFFFFFFFF);
                 pspDebugScreenSetXY(10, 31);
                 pspDebugScreenPrintf("LEFT/RIGHT car   X/START race   L/R stage");
@@ -645,6 +666,10 @@ int main(void)
         }
         if (driving && !picking) {   /* HUD numbers: the sprites are labels only */
             pspDebugScreenSetOffset(cur * FBSZ);
+            if (wasted_t0 && sceKernelGetSystemTimeWide() - wasted_t0 > 1500000) {
+                pspDebugScreenSetTextColor(0xFFFFFFFF);
+                pspDebugScreenSetXY(14, 22); pspDebugScreenPrintf("Press X to try again");
+            }
             if (nai) {
                 int p = sc.cp.pos[0];
                 pspDebugScreenSetXY(9, 28); pspDebugScreenPrintf("%d/%d", p + 1, nai + 1);
