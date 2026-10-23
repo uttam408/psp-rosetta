@@ -513,7 +513,7 @@ int main(void)
         if (picking && driving && !g_nfm_gefill) {
             hud_begin(g_px, f.w, f.h);
             hud_clear(0x000000);
-            hud_stretch(&h_cars, f.w * 65 / 800.0f, f.h * 25 / 450.0f, f.w * 670 / 800.0f, f.h * 400 / 450.0f, 1.0f);
+            hud_stretch(&h_cars, 0, 0, f.w, f.h, 1.0f);   /* fill the PSP screen: no letterbox bars */
             inst_draw(&med, dci);
             hud_sprite(&h_selcar, (f.w - h_selcar.w) / 2.0f, 20, 1.0f);
             hud_sprite(&h_back, 57, 165, 1.0f);
