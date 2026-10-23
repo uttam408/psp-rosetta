@@ -46,6 +46,7 @@ int hud_load(HudTex *t, const char *name)
     return 1;
 }
 
+static int clamp255(int v);
 void hud_sprite(const HudTex *t, float x, float y, float s)
 {
     if (!t || !t->px || !g_fb || s <= 0) return;
@@ -60,6 +61,27 @@ void hud_sprite(const HudTex *t, float x, float y, float s)
             if (pxx < 0 || pxx >= g_w) continue;
             uint32_t c = row[(int)(dx / s)];
             if (c) out[pxx] = c;
+        }
+    }
+}
+
+void hud_sprite_lit(const HudTex *t, float x, float y, float s)
+{
+    if (!t || !t->px || !g_fb || s <= 0) return;
+    int dw = (int)(t->w * s), dh = (int)(t->h * s), x0 = (int)x, y0 = (int)y;
+    for (int dy = 0; dy < dh; dy++) {
+        int py = y0 + dy;
+        if (py < 0 || py >= g_h) continue;
+        const uint32_t *row = t->px + (int)(dy / s) * t->w;
+        uint32_t *out = g_fb + py * g_w;
+        for (int dx = 0; dx < dw; dx++) {
+            int pxx = x0 + dx;
+            if (pxx < 0 || pxx >= g_w) continue;
+            uint32_t c = row[(int)(dx / s)];
+            if (!c) continue;
+            int r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+            r = r * 3 / 2 + 70; g = g * 3 / 2 + 70; b = b * 3 / 2 + 70;
+            out[pxx] = (c & 0xFF000000u) | (uint32_t)clamp255(r) | ((uint32_t)clamp255(g) << 8) | ((uint32_t)clamp255(b) << 16);
         }
     }
 }

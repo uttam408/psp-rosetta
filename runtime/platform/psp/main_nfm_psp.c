@@ -533,8 +533,8 @@ int main(void)
             hud_stretch(&h_cars, 0, 0, f.w, f.h, 1.0f);   /* fill the PSP screen: no letterbox bars */
             inst_draw(&med, dci);
             hud_sprite(&h_selcar, (f.w - h_selcar.w) / 2.0f, 20, 1.0f);
-            hud_sprite(&h_back, 57, 165, 1.0f);
-            hud_sprite(&h_next, f.w - 57 - h_next.w, 165, 1.0f);
+            (b & PSP_CTRL_LEFT ? hud_sprite_lit : hud_sprite)(&h_back, 57, 165, 1.0f);
+            (b & PSP_CTRL_RIGHT ? hud_sprite_lit : hud_sprite)(&h_next, f.w - 57 - h_next.w, 165, 1.0f);
             {   /* stat bars: the formulas of xtGraphics.carselect; gradient up to the value, outline over it */
                 const CarStats *cs = &NFM_CARS[car_i];
                 float v[6];
