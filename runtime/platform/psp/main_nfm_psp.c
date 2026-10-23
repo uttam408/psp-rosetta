@@ -406,7 +406,7 @@ int main(void)
         if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
             if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
-            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
+            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; dci->xz = 0; dci->xy = 0; dci->zy = 0; mad_reseto(&mad, car_i, &co, &sc.cp); tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
             /* the original's carselect: the car turns on the spot 950 ahead of a level camera, over the showroom picture */
             pick_ang = (pick_ang + 4) % 360;
             dci->xz = pick_ang; dci->xy = 0; dci->zy = 0; dci->wzy -= 10; if (dci->wzy < -30) dci->wzy += 30;
