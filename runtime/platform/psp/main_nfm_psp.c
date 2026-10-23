@@ -219,14 +219,14 @@ int main(void)
     }
     step("pak opened: %d assets, free mem %u", pak_count(), (unsigned)sceKernelTotalFreeMemSize());
     step("audio init: %d", nfm_audio_init());
-    static HudTex h_dmg, h_pow, h_lap, h_pos, h_ord[3], h_cd[4], h_fin, h_wasted, h_cars, h_selcar, h_back, h_next, h_statb, h_statbo;
+    static HudTex h_dmg, h_pow, h_lap, h_pos, h_ord[3], h_cd[4], h_fin, h_wasted, h_cars, h_selcar, h_back, h_next, h_statb, h_statbo, h_select;
     {
         int ok = hud_load(&h_dmg, "damage") + hud_load(&h_pow, "power") + hud_load(&h_lap, "lap") + hud_load(&h_pos, "position")
                + hud_load(&h_ord[0], "1") + hud_load(&h_ord[1], "2") + hud_load(&h_ord[2], "3")
                + hud_load(&h_cd[0], "0c") + hud_load(&h_cd[1], "1c") + hud_load(&h_cd[2], "2c") + hud_load(&h_cd[3], "3c")
                + hud_load(&h_fin, "gamefinished") + hud_load(&h_wasted, "yourwasted");
-        ok += hud_load(&h_cars, "cars") + hud_load(&h_selcar, "selectcar") + hud_load(&h_back, "back") + hud_load(&h_next, "next") + hud_load(&h_statb, "statb") + hud_load(&h_statbo, "statbo");
-        step("hud textures: %d/19", ok);
+        ok += hud_load(&h_cars, "cars") + hud_load(&h_selcar, "selectcar") + hud_load(&h_back, "back") + hud_load(&h_next, "next") + hud_load(&h_statb, "statb") + hud_load(&h_statbo, "statbo") + hud_load(&h_select, "select");
+        step("hud textures: %d/20", ok);
     }
     int music_stage = -1;
     for (int i = 0; i < pak_count() && g_nstages < 64; i++) {
@@ -292,10 +292,11 @@ int main(void)
     bool loaded = false, reload = false;
     int car_i = 12;   /* NFM_CARS index; 12 = audir8 */
 #ifdef NFM_PICKSKIP   /* emulator screenshots: go straight to the race */
-    bool picking = false; int pick_ang = 0;
+    bool picking = false, spick = false; int pick_ang = 0;
 #else
-    bool picking = true; int pick_ang = 0;   /* car picker shown at launch */
+    bool picking = true, spick = true; int pick_ang = 0;   /* stage select, then the car picker, shown at launch */
 #endif
+    long sp_x = 0, sp_z = 0; int sp_fog = 0, sp_ang = 0, sp_ptr = 0, sp_cnt = 0;   /* stage-select orbit camera (Medium.aroundtrack) */
     int cyaw_hud = 0;
     unsigned long long wasted_t0 = 0;   /* when the player's car was destroyed (0 = intact) */
     unsigned long long cd_t0 = 0; int cd_step = -1;   /* 3-2-1-GO countdown: cars hold for 3 s, GO shows to 4 s */
@@ -312,7 +313,7 @@ int main(void)
                 driving = false; dci = NULL; nai = 0; scene_free(&sc); stage_free(&st);
             }
 #ifndef NFM_PICKSKIP
-            if (want) picking = true;   /* the picker comes up before each stage */
+            if (want) picking = spick = true;   /* stage select, then the car picker, before each stage */
 #endif
             stage_i = (stage_i + want + g_nstages) % g_nstages; want = 0;
             {   /* per-stage soundtrack; a car change reloads the same stage and keeps the track playing */
@@ -371,6 +372,7 @@ int main(void)
             int camx = 0, camz = 0;
             if (sc.n) { camx = sc.inst[0].x; camz = sc.inst[0].z - 1200; }
             med.x = camx - med.cx; med.z = camz; med.y = -300; med.xz = 0; med.zy = 10;
+            sp_fog = 0; sp_ptr = 0; sp_cnt = 0; sp_ang = 0; if (sc.cp.n) { sp_x = sc.cp.x[0]; sp_z = sc.cp.z[0]; }
             if (log) { fprintf(log, "stage %s '%s' pieces=%u skipped=%u\n", g_names[stage_i], st.name, (unsigned)sc.n, (unsigned)sc.skipped); fflush(log); }
         }
 
@@ -403,7 +405,20 @@ int main(void)
         if (edge & PSP_CTRL_LTRIGGER) { lod = lod ? 0 : NFM_LOD; med.lod = lod; }   /* LOD on/off (A/B on device) */
         if (driving && !picking && wasted_t0 && sceKernelGetSystemTimeWide() - wasted_t0 > 1500000 && (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)))
             reload = true;   /* wasted: X/START retries the stage with a fresh, undamaged car */
-        if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
+        if (picking && driving && spick) {   /* stage select: the camera orbits the track; d-pad L/R browses stages, Cross/Start picks */
+            if (edge & PSP_CTRL_RIGHT) want = 1;
+            if (edge & PSP_CTRL_LEFT)  want = -1;
+            med.trk = 1;   /* the original's track view: no fog, no draw-distance cull */
+            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { spick = false; med.trk = 0; }
+            if (sc.cp.n) {   /* Medium.aroundtrack: 17000 out, 5000 up, centre easing along the checkpoints */
+                sp_ang = (sp_ang + 1) % 360;
+                sp_x -= (sp_x - sc.cp.x[sp_ptr]) / 10; sp_z -= (sp_z - sc.cp.z[sp_ptr]) / 10;
+                if (sp_cnt == 7) { sp_ptr = (sp_ptr + 1) % sc.cp.n; sp_cnt = 0; } else sp_cnt++;
+                float ra = sp_ang * 0.0174532925f;
+                med.x = (int)(sp_x + 17000.0f * cosf(ra)) - med.cx; med.z = (int)(sp_z + 17000.0f * sinf(ra));
+                med.y = -5000; med.xz = ((-sp_ang - 90) % 360 + 360) % 360; med.zy = 16;
+            }
+        } else if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
             if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
             if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; dci->xz = 0; dci->xy = 0; dci->zy = 0; mad_reseto(&mad, car_i, &co, &sc.cp); tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
@@ -527,7 +542,7 @@ int main(void)
 #ifdef NFM_GEFILL
         if (g_nfm_gefill) nfm_ge_begin(g_gelist_fill, (void *)(uintptr_t)(cur * FBSZ), f.w, f.h);
 #endif
-        if (picking && driving && !g_nfm_gefill) {
+        if (picking && driving && !g_nfm_gefill && !spick) {
             hud_begin(g_px, f.w, f.h);
             hud_clear(0x000000);
             hud_stretch(&h_cars, 0, 0, f.w, f.h, 1.0f);   /* fill the PSP screen: no letterbox bars */
@@ -553,6 +568,12 @@ int main(void)
             }
         } else
         scene_draw(&med, &sc);
+        if (picking && spick && driving && !g_nfm_gefill) {   /* stage-select overlay: title and back/next over the orbiting track */
+            hud_begin(g_px, f.w, f.h);
+            hud_sprite(&h_select, 338 * f.w / 800.0f, 35 * f.h / 450.0f, 1.0f);
+            (b & PSP_CTRL_LEFT ? hud_sprite_lit : hud_sprite)(&h_back, 115 * f.w / 800.0f, 135 * f.h / 450.0f, 1.0f);
+            (b & PSP_CTRL_RIGHT ? hud_sprite_lit : hud_sprite)(&h_next, f.w - 115 * f.w / 800.0f - h_next.w, 135 * f.h / 450.0f, 1.0f);
+        }
         for (int k = 0; k < nlerp; k++) pose_set(lin[k], pose_real[k]);
         nlerp = 0;
         if (first) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
@@ -628,7 +649,20 @@ int main(void)
             FILE *z = fopen("nfm_shot.raw", "wb"); if (z) { fwrite(g_px, 4, W * H, z); fclose(z); } } }
 #endif
         acc_draw += t_b - t_a; acc_blit += t_c - t_b;
-        if (picking) {
+        if (picking && spick) {
+            static int sflick;
+            sflick ^= 1;
+            pspDebugScreenSetOffset(cur * FBSZ);
+            pspDebugScreenSetTextColor(sflick ? 0xFFF0F0F0 : 0xFFB0B0B0);
+            pspDebugScreenSetXY((60 - (int)strlen(st.name)) / 2, 9);
+            pspDebugScreenPrintf("%s", st.name);
+            pspDebugScreenSetTextColor(0xFF909090);
+            pspDebugScreenSetXY(26, 10);
+            pspDebugScreenPrintf("%d / %d", stage_i + 1, g_nstages);
+            pspDebugScreenSetTextColor(0xFFFFFFFF);
+            pspDebugScreenSetXY(8, 31);
+            pspDebugScreenPrintf("LEFT/RIGHT stage   X/START choose car   L/R stage");
+        } else if (picking) {
             pspDebugScreenSetOffset(cur * FBSZ);
             {   /* car name (flickers grey/white like the original), stat labels, hint */
                 static int flick;
