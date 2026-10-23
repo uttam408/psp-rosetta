@@ -21,6 +21,8 @@
 #include "../../nfm/medium.h"
 #include "../../nfm/stage.h"
 #include "nfm_audio_psp.h"
+#include "nfm_hud.h"
+#include <math.h>
 
 /* stage N (1-based) -> its tracker module in the pak (the original's per-stage soundtrack) */
 static const char *const g_stage_music[33] = { NULL,
@@ -217,6 +219,14 @@ int main(void)
     }
     step("pak opened: %d assets, free mem %u", pak_count(), (unsigned)sceKernelTotalFreeMemSize());
     step("audio init: %d", nfm_audio_init());
+    static HudTex h_dmg, h_pow, h_lap, h_pos, h_ord[3], h_cd[4], h_fin, h_wasted;
+    {
+        int ok = hud_load(&h_dmg, "damage") + hud_load(&h_pow, "power") + hud_load(&h_lap, "lap") + hud_load(&h_pos, "position")
+               + hud_load(&h_ord[0], "1") + hud_load(&h_ord[1], "2") + hud_load(&h_ord[2], "3")
+               + hud_load(&h_cd[0], "0c") + hud_load(&h_cd[1], "1c") + hud_load(&h_cd[2], "2c") + hud_load(&h_cd[3], "3c")
+               + hud_load(&h_fin, "gamefinished") + hud_load(&h_wasted, "yourwasted");
+        step("hud textures: %d/13", ok);
+    }
     int music_stage = -1;
     for (int i = 0; i < pak_count() && g_nstages < 64; i++) {
         const char *id = pak_at(i)->id;
@@ -280,7 +290,13 @@ int main(void)
     bool pose_valid = false; int nlerp = 0; Inst *lin[NFM_MAXRACERS];
     bool loaded = false, reload = false;
     int car_i = 12;   /* NFM_CARS index; 12 = audir8 */
+#ifdef NFM_PICKSKIP   /* emulator screenshots: go straight to the race */
+    bool picking = false; int pick_ang = 0;
+#else
     bool picking = true; int pick_ang = 0;   /* car picker shown at launch */
+#endif
+    int cyaw_hud = 0;
+    unsigned long long cd_t0 = 0; int cd_step = -1;   /* 3-2-1-GO countdown: cars hold for 3 s, GO shows to 4 s */
     int first = 1;
     Frame f = { lowres ? 400 : W, lowres ? 225 : H, g_px };
     unsigned long long tlast = sceKernelGetSystemTimeWide();
@@ -328,7 +344,7 @@ int main(void)
                 memset(&menv, 0, sizeof menv);
                 mad_init(&mad, &menv, 0);
                 mad_reseto(&mad, car_i, &co, &sc.cp);
-                driving = true; pose_valid = false; tphys = sceKernelGetSystemTimeWide();
+                driving = true; pose_valid = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1;
                 step("car %s ready: %d trackers, %d checkpoints", NFM_CARS[car_i].mesh, sc.trk.n, sc.cp.n);
                 int want_ai = NFM_RACE_N - 1;
                 if (want_ai > NFM_MAXRACERS - 1) want_ai = NFM_MAXRACERS - 1;
@@ -383,7 +399,7 @@ int main(void)
         if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
             if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
-            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; overlay = true; tphys = sceKernelGetSystemTimeWide(); pose_valid = false; }
+            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
             pick_ang = (pick_ang + 1) % 360;
             med.x = dci->x + (int)(m_sin(pick_ang) * 750) - med.cx; med.z = dci->z - (int)(m_cos(pick_ang) * 750);
             med.y = dci->y - 380; med.xz = (360 - pick_ang) % 360; med.zy = 10;
@@ -400,6 +416,10 @@ int main(void)
             unsigned long long tn = sceKernelGetSystemTimeWide();
             static bool tick1_traced = false;   /* bisect a hardware crash: mark each stage of the first physics tick only, so this doesn't spam the memstick every frame */
             lin[0] = co.in; for (int k = 0; k < nai; k++) lin[k + 1] = ai_co[k].in;
+            int cd_s = (int)((tn - cd_t0) / 1000000ull);       /* 0..2 = 3,2,1 (cars held); 3 = GO; 4+ = racing */
+            if (cd_s > 4) cd_s = 4;
+            if (cd_s != cd_step) { cd_step = cd_s; if (cd_s < 4) { static const char *const cn_[4] = { "three", "two", "one", "go" }; sfx(cn_[cd_s], 200); } }
+            if (cd_s < 3) tphys = tn;                          /* grid hold: no physics, nothing to catch up on at GO */
             for (int n = 0; tn - tphys >= NFM_TICK_US && n < 3; n++, tphys += NFM_TICK_US) {
                 for (int k = 0; k <= nai; k++) pose_prev[k] = pose_of(lin[k]);
                 pose_valid = true;
@@ -455,7 +475,7 @@ int main(void)
             }
             /* chase the original's lagged camera angle (Mad.cxz trails the travel direction), not the car's own
              * heading, so the car swings across the view through a turn.  cxz can leave 0..360 while unwinding. */
-            int cyaw = ((mad.cxz % 360) + 360) % 360;
+            int cyaw = ((mad.cxz % 360) + 360) % 360; cyaw_hud = cyaw;
             med.x = dci->x + (int)(m_sin(cyaw) * 900) - med.cx; med.z = dci->z - (int)(m_cos(cyaw) * 900);
             med.y = dci->y - 490; med.xz = (360 - cyaw) % 360; med.zy = 10;
         } else {
@@ -488,6 +508,42 @@ int main(void)
         if (first) { g_nfm_trace = NULL; if (g_trace_f) { fclose(g_trace_f); g_trace_f = NULL; } step("first draw done"); }
         if (first) step("after first scene_draw");
         unsigned long long t_b;
+        if (!g_nfm_gefill && driving && !picking) {
+            hud_begin(g_px, f.w, f.h);
+            {
+                /* HUD, screen space 480x270.  Top-right: damage + power bars; top-centre: next-checkpoint arrow;
+                 * bottom-left: position + lap; centre: countdown. */
+                const float rx = 480.0f - 136.0f;
+                float dm = mad.cd[mad.cn].maxmag > 0 ? (float)mad.hitmag / (float)mad.cd[mad.cn].maxmag : 0.0f;
+                if (dm > 1.0f) dm = 1.0f;
+                float pw = mad.power / 98.0f; if (pw < 0.0f) pw = 0.0f; if (pw > 1.0f) pw = 1.0f;
+                hud_sprite(&h_dmg, rx, 6, 1.0f);
+                hud_rect(rx + 46, 10, 70.0f * dm, 6, 0xE02020u);
+                hud_sprite(&h_pow, rx, 22, 1.0f);
+                hud_rect(rx + 46, 26, 70.0f * pw, 6, 0x20A0E0u);
+                bool done = menv.lastcheck && mad.nlaps >= sc.cp.nlaps;
+                if (!done) {
+                    /* next target = the (clear - nlaps*nsp)-th checkpoint with typ > 0 (see the clear test in mad_drive) */
+                    int want_k = mad.clear - mad.nlaps * sc.cp.nsp + 1, seen = 0, ti = -1;
+                    for (int i = 0; i < sc.cp.n; i++) if (sc.cp.typ[i] > 0 && ++seen == want_k) { ti = i; break; }
+                    if (ti >= 0) {
+                        float c = (float)cyaw_hud * 0.01745329252f;
+                        float dx = (float)(sc.cp.x[ti] - dci->x), dz = (float)(sc.cp.z[ti] - dci->z);
+                        float fwd = dx * -sinf(c) + dz * cosf(c), side = dx * cosf(c) + dz * sinf(c);
+                        hud_arrow(240.0f, 40.0f, atan2f(side, fwd) * 57.2957795f, 22.0f);
+                    }
+                }
+                if (nai) {
+                    int p = sc.cp.pos[0];
+                    if (p >= 0 && p < 3) hud_sprite(&h_ord[p], 8, 236, 1.5f);
+                    hud_sprite(&h_pos, 8, 224, 1.0f);
+                    hud_sprite(&h_lap, 8, 252, 1.0f);
+                }
+                if (done) hud_sprite(&h_fin, 240 - h_fin.w, 100, 2.0f);
+                int cs = (int)((sceKernelGetSystemTimeWide() - cd_t0) / 1000000ull);
+                if (cs <= 3) { const HudTex *ct = &h_cd[cs == 3 ? 0 : 3 - cs]; hud_sprite(ct, 240.0f - ct->w, 100.0f, 2.0f); }
+            }
+        }
 #ifdef NFM_GEFILL
         if (g_nfm_gefill) {
             nfm_ge_finish();
@@ -532,6 +588,17 @@ int main(void)
                     else pspDebugScreenPrintf("pos %d/%d  lap %d/%d ", sc.cp.pos[0] + 1, nai + 1, lap, sc.cp.nlaps);
                 }
             }
+        }
+        if (driving && !picking) {   /* HUD numbers: the sprites are labels only */
+            pspDebugScreenSetOffset(cur * FBSZ);
+            if (nai) {
+                int p = sc.cp.pos[0];
+                pspDebugScreenSetXY(9, 28); pspDebugScreenPrintf("%d/%d", p + 1, nai + 1);
+                if (p >= 3) { pspDebugScreenSetXY(1, 30); pspDebugScreenPrintf("%dth", p + 1); }
+                int lap = mad.nlaps < sc.cp.nlaps ? mad.nlaps + 1 : sc.cp.nlaps;
+                pspDebugScreenSetXY(5, 31); pspDebugScreenPrintf("%d/%d", lap, sc.cp.nlaps);
+            }
+            pspDebugScreenSetXY(58, 4); pspDebugScreenPrintf("%3d", (int)mad.speed);
         }
         sceDisplayWaitVblankStart();
         if (first) { step("first blit, setting framebuf"); }
