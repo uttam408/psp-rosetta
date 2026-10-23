@@ -36,9 +36,15 @@ PSP_HEAP_SIZE_KB(-1024);
 
 #define W 480
 #ifndef NFM_TICK_US
-#define NFM_TICK_US 66666   /* physics step: 33333 = the original's 30 Hz; 66666 = half game speed (default). Cars are pose-interpolated between steps. */
+#define NFM_TICK_US 47619   /* physics step: 33333 = the original's 30 Hz; 47619 = 0.7x game speed (default). Cars are pose-interpolated between steps. */
 #endif
 typedef struct { int x, y, z, xz, xy, zy; } Pose;
+static void sfx(const char *name, int vol)
+{
+    char id[64]; snprintf(id, sizeof id, "audio/sfx/%s", name);
+    const PakAsset *a = pak_find(id);
+    if (a) nfm_sfx_play(a->data, a->size, vol);
+}
 static Pose pose_of(const Inst *i) { return (Pose){ i->x, i->y, i->z, i->xz, i->xy, i->zy }; }
 static void pose_set(Inst *i, Pose p) { i->x = p.x; i->y = p.y; i->z = p.z; i->xz = p.xz; i->xy = p.xy; i->zy = p.zy; }
 static int lerp_i(int a, int b, float t) { return a + (int)((b - a) * t); }
@@ -274,6 +280,7 @@ int main(void)
     bool pose_valid = false; int nlerp = 0; Inst *lin[NFM_MAXRACERS];
     bool loaded = false, reload = false;
     int car_i = 12;   /* NFM_CARS index; 12 = audir8 */
+    bool picking = true; int pick_ang = 0;   /* car picker shown at launch */
     int first = 1;
     Frame f = { lowres ? 400 : W, lowres ? 225 : H, g_px };
     unsigned long long tlast = sceKernelGetSystemTimeWide();
@@ -360,8 +367,8 @@ int main(void)
 #ifdef NFM_CARCYCLE   /* -DNFM_CARCYCLE: PPSSPP test, hold gas and step to the next car every 150 frames */
         { static int nf; if (++nf % 150 == 0) edge |= PSP_CTRL_SQUARE; b |= PSP_CTRL_UP; }
 #endif
-        if (edge & PSP_CTRL_SQUARE) { car_i = (car_i + 1) % 16; reload = true; }   /* next car (reloads the stage) */
-        if (edge & PSP_CTRL_CIRCLE) { car_i = (car_i + 15) % 16; reload = true; }
+        if (!picking && (edge & PSP_CTRL_SQUARE)) { car_i = (car_i + 1) % 16; reload = true; }   /* next car (reloads the stage) */
+        if (!picking && (edge & PSP_CTRL_CIRCLE)) { car_i = (car_i + 15) % 16; reload = true; }
         if (edge & PSP_CTRL_START) overlay = !overlay;
         if (edge & PSP_CTRL_TRIANGLE) med.fastxf = fastxf = !fastxf;   /* float-composed transform on/off (A/B on device) */
 #ifdef NFM_LOWRES   /* experimental, froze on real hardware: build with XCFLAGS=-DNFM_LOWRES to try */
@@ -373,7 +380,14 @@ int main(void)
 #endif
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
         if (edge & PSP_CTRL_LTRIGGER) { lod = lod ? 0 : NFM_LOD; med.lod = lod; }   /* LOD on/off (A/B on device) */
-        if (driving) {
+        if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
+            if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
+            if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
+            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; overlay = true; tphys = sceKernelGetSystemTimeWide(); pose_valid = false; }
+            pick_ang = (pick_ang + 1) % 360;
+            med.x = dci->x + (int)(m_sin(pick_ang) * 750) - med.cx; med.z = dci->z - (int)(m_cos(pick_ang) * 750);
+            med.y = dci->y - 380; med.xz = (360 - pick_ang) % 360; med.zy = 10;
+        } else if (driving) {
             /* D-pad / analog: up = gas, down = brake, left/right = steer, Cross = handbrake; physics ticks at the original's 30 Hz */
             Control ctl = { .left = (b & PSP_CTRL_LEFT) || ax < -40, .right = (b & PSP_CTRL_RIGHT) || ax > 40,
                             .up = (b & PSP_CTRL_UP) || ay < -40, .down = (b & PSP_CTRL_DOWN) || ay > 40,
@@ -408,6 +422,20 @@ int main(void)
                 if (trc) step("tick1: preform done, drive start");
                 mad_drive(&mad, &ctl, &co, &sc.trk, &sc.cp);
                 for (int k = 0; k < nai; k++) mad_drive(&ai_mad[k], &ai_ctl[k], &ai_co[k], &sc.trk, &sc.cp);
+                {   /* sound cues off the player's physics state: checkpoint passed, new impact (hitmag is cumulative) */
+                    static int s_cp = -1, s_hit = 0; static unsigned s_rng = 1;
+                    if (mad.hitmag < s_hit) s_hit = 0;                      /* reset on reload / repair */
+                    int cpn = mad.env->checkpoint;
+                    if (s_cp >= 0 && cpn != s_cp) sfx("checkpoint", 200);
+                    s_cp = cpn;
+                    int dh = mad.hitmag - s_hit; s_hit = mad.hitmag;
+                    if (dh > 40) {
+                        s_rng = s_rng * 1664525u + 1013904223u;
+                        char nm[16]; int pick = 1 + (int)((s_rng >> 16) % 3);
+                        snprintf(nm, sizeof nm, "%s%d", dh < 300 ? "lowcrash" : "crash", pick);
+                        sfx(nm, dh < 300 ? 150 : 230);
+                    }
+                }
                 if (trc) step("tick1: drive done, checkstat start");
                 if (nai) {
                     static Mad smad[NFM_MAXRACERS]; static CarObj sco[NFM_MAXRACERS];
@@ -484,7 +512,13 @@ int main(void)
             FILE *z = fopen("nfm_shot.raw", "wb"); if (z) { fwrite(g_px, 4, W * H, z); fclose(z); } } }
 #endif
         acc_draw += t_b - t_a; acc_blit += t_c - t_b;
-        if (overlay) {
+        if (picking) {
+            pspDebugScreenSetOffset(cur * FBSZ);
+            pspDebugScreenSetXY(0, 1);
+            pspDebugScreenPrintf("<  %-16s %2d/16  >   ", NFM_CARS[car_i].name, car_i + 1);
+            pspDebugScreenSetXY(0, 2);
+            pspDebugScreenPrintf("LEFT/RIGHT pick car   X/START race   L/R stage ");
+        } else if (overlay) {
             pspDebugScreenSetOffset(cur * FBSZ);
             pspDebugScreenSetXY(0, 0);
             pspDebugScreenPrintf("%s  %.1f fps  %d/%d polys  far %d%% lod %d %dx%d %s ", g_names[stage_i], fps, g_polys_drawn, g_polys_in, far_pct, lod, f.w, f.h, med.fastxf ? "FAST" : "exact");

@@ -146,7 +146,7 @@ bool scene_build(Scene *sc, const Stage *s, Medium *m)
         if (o->op == ST_CHK && (o->flags & 1)) y = o->a[3];
         if (o->op == ST_FIX) { y = o->a[2]; rot = o->a[3]; }
         inst_init(&sc->inst[sc->n], m, &sc->meshes[pi], x, y, z, rot, -1, -1);
-        sc->inst[sc->n++].always = o->op == ST_CHK;
+        sc->inst[sc->n++].always = o->op == ST_CHK || !strncmp(NPIECE_NAMES[pi], "tree", 4);
         if (phys) {
             CheckPoints *cp = &sc->cp;
             if (!strcmp(NPIECE_NAMES[pi], "bumproad")) trackers_add_bumproad(&sc->trk, &sc->meshes[pi], x, y, z, rot);
@@ -176,6 +176,7 @@ Inst *scene_add_car(Scene *sc, Medium *m, const char *id, int x, int z, int xz, 
     if (!car_mesh_build(&sc->car, &sc->car_src)) return NULL;
     Inst *o = &sc->inst[sc->n++];
     inst_init(o, m, &sc->car, x, 250 - sc->car.grat, z, xz, p1, p2);
+    o->always = true;
     sc->car_inst = o;
     return o;
 }
@@ -188,6 +189,7 @@ Inst *scene_add_racer(Scene *sc, Medium *m, int slot, const char *id, int x, int
     if (!car_mesh_build(&sc->racer[slot], &sc->racer_src[slot])) return NULL;
     Inst *o = &sc->inst[sc->n++];
     inst_init(o, m, &sc->racer[slot], x, 250 - sc->racer[slot].grat, z, xz, p1, p2);
+    o->always = true;
     sc->racer_inst[slot] = o;
     if (slot + 1 > sc->nracers) sc->nracers = slot + 1;
     return o;
