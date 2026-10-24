@@ -441,14 +441,18 @@ int main(void)
                             .handb = (b & PSP_CTRL_CROSS) != 0, .zyinv = false, .wall = -1 };
             /* the original only enters its air-control "loop" state on a handbrake press while airborne; arrows in flight start it too so they roll straight away */
             {   /* one aerial trick at a time: whichever axis is touched first (roll = left/right, flip = up/down) owns the jump */
-                static int axis;
+                static int axis; static bool pud;
                 bool air = !mad.wtouch && !mad.mtouch, any = ctl.left || ctl.right || ctl.up || ctl.down;
+                bool ud = ctl.up || ctl.down, ud_new = ud && !pud; pud = ud;
                 if (!air || !any) axis = 0;
                 else {
-                    if (!axis) axis = (ctl.up || ctl.down) ? 2 : 1;
-                    if (axis == 1) ctl.up = ctl.down = false; else ctl.left = ctl.right = false;
-                    ctl.handb = true;
+                    /* flips need a fresh up/down press made in the air: the gas is usually already held at take-off */
+                    if (!axis) axis = ud_new ? 2 : (ctl.left || ctl.right) ? 1 : 0;
+                    if (axis != 2) ctl.up = ctl.down = false;
+                    if (axis == 1) ctl.up = ctl.down = false; else if (axis == 2) ctl.left = ctl.right = false;
+                    if (axis) ctl.handb = true;
                 }
+                if (air && axis == 0) ctl.up = ctl.down = false;   /* held-over gas/brake does nothing mid-air */
             }
             {   /* d-pad steers to the full cap; the stick steers proportionally so a gentle push turns gently */
                 int mag = ax < 0 ? -ax : ax;
