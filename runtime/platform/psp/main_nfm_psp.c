@@ -626,6 +626,13 @@ int main(void)
                         hud_arrow(ana, mad.missedcp, (frames & 4) != 0, g_px[3 * f.w + f.w / 2]);
                     }
                 }
+                if (!wasted_t0) {   /* dark plate under each call-out so the coloured debug text reads on a pale sky */
+                    CalloutLine cl[6]; int ncl = callout_get(cl, 6);
+                    for (int i = 0; i < ncl; i++) {
+                        int len = (int)strlen(cl[i].text); if (len > 68) len = 68;
+                        hud_rect((68 - len) / 2 * 7 - 3, cl[i].row * 8 - 1, len * 7 + 6, 10, 0x101830u);
+                    }
+                }
                 if (radar_on && sc.cp.n > 1) {
                     int ox[8], oz[8];
                     for (int k = 0; k < nai && k < 8; k++) { ox[k] = ai_co[k].in->x; oz[k] = ai_co[k].in->z; }
