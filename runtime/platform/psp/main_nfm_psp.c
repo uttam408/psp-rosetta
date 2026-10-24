@@ -360,7 +360,8 @@ int main(void)
                 for (int k = 0; k < want_ai; k++) {
                     int acn = (car_i + 1 + k) % 16;
                     char aid[64]; snprintf(aid, sizeof aid, "mesh/car/%s", NFM_CARS[acn].mesh);
-                    int ox = (k % 2 ? 220 : -220) * (k / 2 + 1), oz = -760 - 180 * (k + 1);
+                    static const int gx[7] = { 0, -350, 350, 0, -350, 350, 0 }, gz[7] = { -760, -380, -380, 0, 380, 380, 760 };   /* xtGraphics.xstart/zstart */
+                    int ox = gx[(k + 1) % 7], oz = gz[(k + 1) % 7];
                     Inst *ai = scene_add_racer(&sc, &med, k + 1, aid, ox, oz, 0, 0x3232c8, 0x282828);
                     if (!ai || !carobj_init(&ai_co[k], ai)) break;
                     menv.isbot[k + 1] = true;
@@ -427,8 +428,10 @@ int main(void)
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
             if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; dci->xz = 0; dci->xy = 0; dci->zy = 0; mad_reseto(&mad, car_i, &co, &sc.cp); callout_reset(); tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
             /* the original's carselect: the car turns on the spot 950 ahead of a level camera, over the showroom picture */
-            pick_ang = (pick_ang + 4) % 360;
-            dci->xz = pick_ang; dci->xy = 0; dci->zy = 0; dci->wzy -= 10; if (dci->wzy < -30) dci->wzy += 30;
+            if (picking) {   /* (not the frame X was pressed: that would overwrite the grid heading just set) */
+                pick_ang = (pick_ang + 4) % 360;
+                dci->xz = pick_ang; dci->xy = 0; dci->zy = 0; dci->wzy -= 10; if (dci->wzy < -30) dci->wzy += 30;
+            }
             med.x = dci->x - med.cx; med.z = dci->z - 950;
             med.y = dci->y - 280; med.xz = 0; med.zy = 0;
         } else if (driving) {
