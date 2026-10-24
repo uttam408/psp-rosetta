@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..ir import Asset, Kind
-from . import audio, models, textures
+from . import audio, data, models, textures
 
 
 def convert_asset(asset: Asset, out_dir: Path, cfg: dict[str, Any]) -> dict[str, Any]:
@@ -18,15 +18,4 @@ def convert_asset(asset: Asset, out_dir: Path, cfg: dict[str, Any]) -> dict[str,
         return audio.convert_audio(asset, out_dir, cfg.get("audio", {}))
     if asset.kind is Kind.MESH:
         return models.convert_mesh(asset, out_dir, cfg.get("models", {}))
-    # Kind.DATA — pass through untouched
-    dst = out_dir / (_safe(asset.id) + ".bin")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_bytes(asset.source.read_bytes())
-    return {
-        "id": asset.id, "kind": asset.kind.value, "file": str(dst.relative_to(out_dir)),
-        "bytes": dst.stat().st_size, "passthrough": True,
-    }
-
-
-def _safe(asset_id: str) -> str:
-    return asset_id.replace("..", "_")
+    return data.convert_data(asset, out_dir)

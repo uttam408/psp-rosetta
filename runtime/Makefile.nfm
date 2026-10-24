@@ -1,0 +1,26 @@
+# Host (SDL2) build of the NFM viewer / harness.
+#   make -f Makefile.nfm            -> build/nfm_view
+#   make -f Makefile.nfm shot       -> headless screenshot of mesh/car/mustang
+#   make -f Makefile.nfm bench      -> per-frame CPU cost
+CC      ?= cc
+CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fwrapv
+SDL_CFLAGS := $(shell sdl2-config --cflags)
+SDL_LIBS   := $(shell sdl2-config --libs)
+
+SRC := nfm/main_nfm.c nfm/pmesh.c nfm/wheels.c nfm/mad.c nfm/control.c nfm/medium.c nfm/stage.c nfm/pile.c src/pak.c
+OUT := build/nfm_view
+PAK := ../build/nfm/assets.pak
+MESH ?= mesh/car/mustang
+
+all: $(OUT)
+$(OUT): $(SRC) $(wildcard nfm/*.h)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc $(SDL_CFLAGS) $(SRC) $(SDL_LIBS) -lm -o $@
+
+shot: $(OUT)
+	SDL_RENDER_DRIVER=software $(OUT) $(PAK) $(MESH) --shot build/$(subst /,_,$(MESH)).bmp
+bench: $(OUT)
+	$(OUT) $(PAK) $(MESH) --bench
+clean:
+	rm -rf build
+.PHONY: all shot bench clean
