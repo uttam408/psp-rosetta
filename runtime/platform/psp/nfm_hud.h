@@ -16,4 +16,7 @@ void hud_stretch(const HudTex *t, float x, float y, float w, float h, float frac
 void hud_clear(uint32_t rgb);
 /* the original's guidance arrow: ana = degrees from straight ahead (+ = left), missed = Mad.missedcp, sky = ABGR pixel it fades into */
 void hud_arrow(float ana, int missed, int flk, uint32_t sky);
+/* the original radar minimap: checkpoints cx/cz/typ[n], player at px/pz, camera angle cxz, other cars ox/oz[nopp] */
+void hud_radar(const int *cx, const int *cz, const int *typ, int n, int px, int pz, int cxz,
+               const int *ox, const int *oz, int nopp, const int sky[3], const int snap[3]);
 #endif

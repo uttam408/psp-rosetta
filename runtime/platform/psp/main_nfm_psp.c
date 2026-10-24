@@ -22,6 +22,7 @@
 #include "../../nfm/stage.h"
 #include "nfm_audio_psp.h"
 #include "nfm_hud.h"
+#include "nfm_callout.h"
 #include <math.h>
 
 /* stage N (1-based) -> its tracker module in the pak (the original's per-stage soundtrack) */
@@ -47,6 +48,8 @@ static void sfx(const char *name, int vol)
     const PakAsset *a = pak_find(id);
     if (a) nfm_sfx_play(a->data, a->size, vol);
 }
+static bool radar_on = true;   /* START toggles; the original starts with it off in single player */
+static float g_ana;  /* the drawn guidance-arrow angle (xtGraphics.ana), also read by the Wrong Way call-out */
 static Pose pose_of(const Inst *i) { return (Pose){ i->x, i->y, i->z, i->xz, i->xy, i->zy }; }
 static void pose_set(Inst *i, Pose p) { i->x = p.x; i->y = p.y; i->z = p.z; i->xz = p.xz; i->xy = p.xy; i->zy = p.zy; }
 static int lerp_i(int a, int b, float t) { return a + (int)((b - a) * t); }
@@ -350,7 +353,7 @@ int main(void)
                 memset(&menv, 0, sizeof menv);
                 mad_init(&mad, &menv, 0);
                 mad_reseto(&mad, car_i, &co, &sc.cp);
-                driving = true; wasted_t0 = 0; pose_valid = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1;
+                driving = true; wasted_t0 = 0; callout_reset(); g_ana = 0; pose_valid = false; tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1;
                 step("car %s ready: %d trackers, %d checkpoints", NFM_CARS[car_i].mesh, sc.trk.n, sc.cp.n);
                 int want_ai = NFM_RACE_N - 1;
                 if (want_ai > NFM_MAXRACERS - 1) want_ai = NFM_MAXRACERS - 1;
@@ -403,6 +406,7 @@ int main(void)
 #endif
         if (edge & PSP_CTRL_SELECT) { far_pct = far_pct <= 30 ? 100 : far_pct - 20; med.far_pct = far_pct; }
         if (edge & PSP_CTRL_LTRIGGER) { lod = lod ? 0 : NFM_LOD; med.lod = lod; }   /* LOD on/off (A/B on device) */
+        if (driving && !picking && !wasted_t0 && (edge & PSP_CTRL_START)) radar_on = !radar_on;   /* the original's [S] radar toggle */
         if (driving && !picking && wasted_t0 && sceKernelGetSystemTimeWide() - wasted_t0 > 1500000 && (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)))
             reload = true;   /* wasted: X/START retries the stage with a fresh, undamaged car */
         if (picking && driving && spick) {   /* stage select: the camera orbits the track; d-pad L/R browses stages, Cross/Start picks */
@@ -421,7 +425,7 @@ int main(void)
         } else if (picking && driving) {   /* car picker: the car turns on the grid; d-pad L/R browses, Cross/Start races */
             if (edge & PSP_CTRL_RIGHT) { car_i = (car_i + 1) % 16; reload = true; }
             if (edge & PSP_CTRL_LEFT)  { car_i = (car_i + 15) % 16; reload = true; }
-            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; dci->xz = 0; dci->xy = 0; dci->zy = 0; mad_reseto(&mad, car_i, &co, &sc.cp); tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
+            if (edge & (PSP_CTRL_CROSS | PSP_CTRL_START)) { picking = false; dci->xz = 0; dci->xy = 0; dci->zy = 0; mad_reseto(&mad, car_i, &co, &sc.cp); callout_reset(); tphys = sceKernelGetSystemTimeWide(); cd_t0 = tphys; cd_step = -1; pose_valid = false; }
             /* the original's carselect: the car turns on the spot 950 ahead of a level camera, over the showroom picture */
             pick_ang = (pick_ang + 4) % 360;
             dci->xz = pick_ang; dci->xy = 0; dci->zy = 0; dci->wzy -= 10; if (dci->wzy < -30) dci->wzy += 30;
@@ -495,6 +499,11 @@ int main(void)
                         snprintf(nm, sizeof nm, "%s%d", dh < 300 ? "lowcrash" : "crash", pick);
                         sfx(nm, dh < 300 ? 150 : 230);
                     }
+                }
+                {   /* on-screen call-outs: stunt names, wrong way, checkpoint missed, power low, wasted opponents */
+                    const char *ai_nm[8];
+                    for (int k = 0; k < nai && k < 8; k++) ai_nm[k] = NFM_CARS[(car_i + 1 + k) % 16].name;
+                    if (callout_tick(&mad, &sc.cp, nai, g_ana, cd_s >= 4, ai_nm)) sfx("powerup", 200);
                 }
                 if (trc) step("tick1: drive done, checkstat start");
                 if (nai) {
@@ -602,7 +611,7 @@ int main(void)
                         float dx = (float)(sc.cp.x[ti] - dci->x), dz = (float)(sc.cp.z[ti] - dci->z);
                         float fwd = dx * -sinf(c) + dz * cosf(c), side = dx * cosf(c) + dz * sinf(c);
                         /* xtGraphics.arrow: target angle clamped to +/-130, the drawn angle chases it at 10 deg per 30 Hz frame */
-                        static float ana; static unsigned long long ta;
+                        float ana = g_ana; static unsigned long long ta;
                         unsigned long long tq = sceKernelGetSystemTimeWide();
                         float stp = ta ? 10.0f * (float)(tq - ta) / 33333.0f : 10.0f; ta = tq;
                         float k = -atan2f(side, fwd) * 57.2957795f;
@@ -610,8 +619,14 @@ int main(void)
                         if (k < -130) k = -130;
                         if (fabsf(ana - k) < 180) { if (fabsf(ana - k) < stp) ana = k; else ana += ana < k ? stp : -stp; }
                         else { ana += (k < 0 ? 1.5f : -1.5f) * stp; if (ana > 180) ana -= 360; if (ana < -180) ana += 360; }
+                        g_ana = ana;
                         hud_arrow(ana, mad.missedcp, (frames & 4) != 0, g_px[3 * f.w + f.w / 2]);
                     }
+                }
+                if (radar_on && sc.cp.n > 1) {
+                    int ox[8], oz[8];
+                    for (int k = 0; k < nai && k < 8; k++) { ox[k] = ai_co[k].in->x; oz[k] = ai_co[k].in->z; }
+                    hud_radar(sc.cp.x, sc.cp.z, sc.cp.typ, sc.cp.n, dci->x, dci->z, mad.cxz, ox, oz, nai < 8 ? nai : 8, med.csky, med.snap);
                 }
                 if (nai) {
                     int p = sc.cp.pos[0];
@@ -710,6 +725,15 @@ int main(void)
                 if (p >= 3) { pspDebugScreenSetXY(1, 30); pspDebugScreenPrintf("%dth", p + 1); }
                 int lap = mad.nlaps < sc.cp.nlaps ? mad.nlaps + 1 : sc.cp.nlaps;
                 pspDebugScreenSetXY(5, 31); pspDebugScreenPrintf("%d/%d", lap, sc.cp.nlaps);
+            }
+            if (!wasted_t0) {
+                CalloutLine cl[6]; int ncl = callout_get(cl, 6);
+                for (int i = 0; i < ncl; i++) {
+                    int len = (int)strlen(cl[i].text); if (len > 68) len = 68;
+                    pspDebugScreenSetTextColor(cl[i].col);
+                    pspDebugScreenSetXY((68 - len) / 2, cl[i].row); pspDebugScreenPrintf("%.68s", cl[i].text);
+                }
+                pspDebugScreenSetTextColor(0xFFFFFFFF);
             }
             pspDebugScreenSetXY(58, 4); pspDebugScreenPrintf("%3d", (int)mad.speed);
         }

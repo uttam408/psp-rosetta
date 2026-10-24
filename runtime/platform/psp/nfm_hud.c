@@ -189,3 +189,64 @@ void hud_arrow(float ana, int missed, int flk, uint32_t sky)
     uint32_t oc = abgr(or_, og, ob);
     for (int i = 0; i < 7; i++) { int j = (i + 1) % 7; line((int)xy[2 * i], (int)xy[2 * i + 1], (int)xy[2 * j], (int)xy[2 * j + 1], oc); }
 }
+
+/* xtGraphics.radarstat, drawn at 0.6x (the original is laid out for 800x450): translucent sky-coloured rounded square,
+ * the track as a darker polyline, other cars as crosses + 3x3 squares, the player fixed at the centre.  Track and
+ * car coordinates are world units / prox about the player, rotated by the camera angle cxz. */
+static void blend_px(int x, int y, int r, int g, int b, int a256)
+{
+    if (x < 0 || x >= g_w || y < 0 || y >= g_h) return;
+    uint32_t p = g_fb[y * g_w + x];
+    int pr = p & 255, pg = (p >> 8) & 255, pb = (p >> 16) & 255;
+    pr += (r - pr) * a256 >> 8; pg += (g - pg) * a256 >> 8; pb += (b - pb) * a256 >> 8;
+    g_fb[y * g_w + x] = abgr(pr, pg, pb);
+}
+
+static void rad_rot(float *x, float *y, float ang)
+{
+    float c = cosf(ang * 0.0174532925f), s = sinf(ang * 0.0174532925f), dx = *x - 96.0f, dy = *y - 141.0f;
+    *x = 96.0f + dx * c - dy * s; *y = 141.0f + dx * s + dy * c;
+}
+
+void hud_radar(const int *cx, const int *cz, const int *typ, int n, int px, int pz, int cxz,
+               const int *ox, const int *oz, int nopp, const int sky[3], const int snap[3])
+{
+    const float S = 0.6f;
+    if (!g_fb || n < 2) return;
+    int mx = 0;
+    for (int i = 0; i < n - 1; i++) for (int j = i + 1; j < n; j++) {
+        int a = abs(cx[i] - cx[j]), b = abs(cz[i] - cz[j]);
+        if (a > mx) mx = a;
+        if (b > mx) mx = b;
+    }
+    float prox = mx / 90.0f; if (prox < 1.0f) prox = 1.0f;
+    int x0 = (int)(10 * S), y0 = (int)(55 * S), x1 = (int)(182 * S), y1 = (int)(227 * S), rr = (int)(30 * S / 2);
+    for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+        int dx = x < x0 + rr ? x0 + rr - x : x >= x1 - rr ? x - (x1 - rr - 1) : 0;
+        int dy = y < y0 + rr ? y0 + rr - y : y >= y1 - rr ? y - (y1 - rr - 1) : 0;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        blend_px(x, y, sky[0], sky[1], sky[2], 128);
+    }
+    uint32_t dk = abgr(sky[0] / 2, sky[1] / 2, sky[2] / 2);
+    for (int i = 0; i < n; i++) {
+        int j = i + 1; if (i == n - 1) j = 0;
+        int brk = 0; if (typ[j] == -3) { j = 0; brk = 1; }
+        float ax = 96.0f - (px - cx[i]) / prox, ay = 141.0f - (cz[i] - pz) / prox;
+        float bx = 96.0f - (px - cx[j]) / prox, by = 141.0f - (cz[j] - pz) / prox;
+        rad_rot(&ax, &ay, (float)cxz); rad_rot(&bx, &by, (float)cxz);
+        line((int)(ax * S), (int)(ay * S), (int)(bx * S), (int)(by * S), dk);
+        if (brk) break;
+    }
+    int r3 = clamp255((int)(80 + 80 * (snap[1] / 100.0f))), b3 = clamp255((int)(159 + 159 * (snap[2] / 100.0f)));
+    for (int k = 0; k < nopp; k++) {
+        float qx = 96.0f - (px - ox[k]) / prox, qy = 141.0f - (oz[k] - pz) / prox;
+        rad_rot(&qx, &qy, (float)cxz);
+        int ix = (int)(qx * S), iy = (int)(qy * S);
+        if (ix < x0 + 1 || ix > x1 - 2 || iy < y0 + 1 || iy > y1 - 2) continue;
+        uint32_t c = abgr(0, r3, b3);
+        for (int d = -1; d <= 1; d++) for (int e = -1; e <= 1; e++) g_fb[(iy + e) * g_w + ix + d] = c;
+    }
+    int pr = clamp255((int)(159 + 159 * (snap[0] / 100.0f)));
+    int cx0 = (int)(96 * S), cy0 = (int)(141 * S);
+    for (int d = -1; d <= 1; d++) for (int e = -1; e <= 1; e++) g_fb[(cy0 + e) * g_w + cx0 + d] = abgr(pr, 0, 0);
+}
